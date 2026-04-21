@@ -1,0 +1,17 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "EnergyCurb listener",
+        "description": "Bind an HTTP listener for incoming Curb hub data. Point `border.prod.energycurb.com` at this Home Assistant host via DNS (or use a reverse proxy), then set the hub to POST to http://<ha-host>:<port>/v3/samples/<serial>.",
+        "data": {
+          "host": "Bind host",
+          "port": "Bind port"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "An EnergyCurb listener is already configured on this host:port."
+    }
+  }
+}
