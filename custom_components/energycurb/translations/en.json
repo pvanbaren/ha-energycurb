@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "EnergyCurb listener",
-        "description": "Bind an HTTP listener for incoming Curb hub data. Point `border.prod.energycurb.com` at this Home Assistant host via DNS (or use a reverse proxy), then set the hub to POST to `http://{ha_host}:{port}/v3/samples/{serial}`.",
+        "description": "Bind an HTTP listener for incoming Curb hub data. Point `border.prod.energycurb.com` at this Home Assistant host via DNS (or use a reverse proxy), then set the hub to POST to `http://HA_HOST:PORT/v3/samples/SERIAL`.",
         "data": {
           "host": "Bind host",
           "port": "Bind port"
@@ -49,7 +49,7 @@
       }
     },
     "abort": {
-      "no_devices": "No Curb hubs have connected yet. Wait for at least one POST to `/v3/samples/{serial}` before configuring."
+      "no_devices": "No Curb hubs have connected yet. Wait for at least one POST to `/v3/samples/SERIAL` before configuring."
     }
   },
   "selector": {
