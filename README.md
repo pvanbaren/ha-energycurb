@@ -135,7 +135,7 @@ on boot.
 
 - **Nothing shows up**: confirm the hub's `/data/hub-config.json` has
   your HA host:port in every `endpoints.*` URL, and check the hub's
-  `/data/streamer.log` for POST responses. Check HA logs for
+  `/var/log/streamer.log` for POST responses. Check HA logs for
   `EnergyCurb listening on …`.
 - **`Failed to bind … Address already in use`**: another service has the
   port. Pick a different one and reconfigure.
@@ -146,6 +146,11 @@ on boot.
     logs:
       custom_components.energycurb: debug
   ```
+- **Check the hub's own logs** in `/var/log/` on the device. `sampler.log`
+  is the most useful when samples aren't making it to HA — it shows ADE
+  reads, per-sample errors, and the batches it hands off to `streamer`.
+  `streamer.log` records the actual POSTs and their HTTP status codes;
+  `messages.log` covers the `/v3/messages` polling.
 
 ## License
 
