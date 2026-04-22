@@ -19,6 +19,7 @@ from .const import (
     CLAMP_30A,
     CLAMP_50A,
     CLAMP_100A,
+    CONF_CIRCUIT_BIDIRECTIONAL,
     CONF_CIRCUIT_CLAMP,
     CONF_CIRCUIT_NAME,
     CONF_CIRCUIT_POLARITY,
@@ -178,6 +179,7 @@ def default_circuits() -> list[dict[str, Any]]:
             CONF_CIRCUIT_CLAMP: CLAMP_30A,
             CONF_CIRCUIT_VOLTAGE: VOLTAGE_110,
             CONF_CIRCUIT_POLARITY: POLARITY_POSITIVE,
+            CONF_CIRCUIT_BIDIRECTIONAL: False,
         }
         for i in range(NUM_CIRCUITS)
     ]

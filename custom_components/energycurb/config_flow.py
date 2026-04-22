@@ -27,6 +27,7 @@ from homeassistant.helpers.selector import (
 from .const import (
     CLAMP_CHOICES,
     CONF_CIRCUITS,
+    CONF_CIRCUIT_BIDIRECTIONAL,
     CONF_CIRCUIT_CLAMP,
     CONF_CIRCUIT_NAME,
     CONF_CIRCUIT_POLARITY,
@@ -195,6 +196,10 @@ class CurbOptionsFlow(OptionsFlow):
                         "polarity",
                         default=ch.get(CONF_CIRCUIT_POLARITY, POLARITY_CHOICES[0]),
                     ): _polarity_selector(),
+                    vol.Required(
+                        "bidirectional",
+                        default=bool(ch.get(CONF_CIRCUIT_BIDIRECTIONAL, False)),
+                    ): bool,
                 }
             )
             fields[vol.Required(_section_key(i))] = section(sub, {"collapsed": False})
@@ -214,6 +219,7 @@ class CurbOptionsFlow(OptionsFlow):
                     CONF_CIRCUIT_CLAMP: sub["clamp"],
                     CONF_CIRCUIT_VOLTAGE: sub["voltage"],
                     CONF_CIRCUIT_POLARITY: sub["polarity"],
+                    CONF_CIRCUIT_BIDIRECTIONAL: bool(sub["bidirectional"]),
                 })
 
             new_options = copy.deepcopy(dict(self._entry.options))

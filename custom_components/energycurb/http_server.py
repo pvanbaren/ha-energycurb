@@ -16,6 +16,7 @@ from homeassistant.helpers.storage import Store
 
 from .const import (
     CONF_CIRCUITS,
+    CONF_CIRCUIT_BIDIRECTIONAL,
     CONF_DEVICES,
     DOMAIN,
     NUM_CIRCUITS,
@@ -93,9 +94,17 @@ class CurbHttpServer:
         self.serials: set[str] = set()
         self.latest: dict[str, dict[int, float]] = {}
         self.latest_timestamp: dict[str, int] = {}
-        # Cumulative energy per (serial, circuit_idx), in Wh. Monotonic
-        # (we sum abs(w)) so HA's total_increasing semantics hold.
+        # Cumulative energy per (serial, circuit_idx), in Wh. The common
+        # `energy_wh` store always backs the "Energy" sensor — its
+        # meaning shifts with the circuit's bidirectional flag:
+        #   non-bidirectional → Σ |w|
+        #   bidirectional     → Σ max(w, 0)   ("consumption")
+        # When the circuit is bidirectional, `energy_wh_production`
+        # accumulates Σ max(-w, 0) and backs a separate "Energy
+        # Production" sensor. Both stores are monotonic to satisfy HA's
+        # total_increasing semantics.
         self.energy_wh: dict[str, dict[int, float]] = {}
+        self.energy_wh_production: dict[str, dict[int, float]] = {}
         self._energy_store: Store = Store(
             hass, ENERGY_STORAGE_VERSION, _energy_storage_key(entry)
         )
@@ -106,13 +115,28 @@ class CurbHttpServer:
         # Restore the persisted energy counters before we accept any
         # requests, so the first POST's delta is added to the right base
         # value (and the sensors come up with their last-saved totals).
+        #
+        # Storage shape evolved once without a version bump:
+        #   pre-bidirectional : flat {serial: {idx: wh}} of |w| totals
+        #   current           : {"energy","production": {serial: {idx: wh}}}
+        # Detect by the top-level keys and map flat data into `energy`.
         stored = await self._energy_store.async_load()
         if stored:
-            for serial, circuits in stored.items():
-                self.energy_wh[serial] = {
-                    int(k): float(v) for k, v in circuits.items()
-                }
-                self.serials.add(serial)
+            if "energy" in stored or "production" in stored:
+                energy_data = stored.get("energy", {})
+                production_data = stored.get("production", {})
+            else:
+                energy_data = stored
+                production_data = {}
+            for target, data in (
+                (self.energy_wh, energy_data),
+                (self.energy_wh_production, production_data),
+            ):
+                for serial, circuits in data.items():
+                    target[serial] = {
+                        int(k): float(v) for k, v in circuits.items()
+                    }
+                    self.serials.add(serial)
 
         app = web.Application()
         app.router.add_post("/v3/samples/{serial}", self._handle_samples)
@@ -135,7 +159,7 @@ class CurbHttpServer:
     async def async_stop(self) -> None:
         # Flush any pending energy-counter writes synchronously so a
         # clean unload/reload doesn't lose the last ≤30s of accumulation.
-        await self._energy_store.async_save(self.energy_wh)
+        await self._energy_store.async_save(self._energy_snapshot())
         if self._site is not None:
             await self._site.stop()
             self._site = None
@@ -243,7 +267,7 @@ class CurbHttpServer:
     def _apply_sample(self, serial: str, sample: dict[str, Any]) -> None:
         # Hub reports `w` per channel as signed Wh over the sample
         # interval. The power sensor exposes the signed W reading; the
-        # energy counter accumulates |w| in Wh to stay monotonic.
+        # energy counters each accumulate a monotonic view of that Wh.
         sample_wh: list[float] = []
         for group in sample.get("g", []):
             for ch in group.get("c", []):
@@ -258,11 +282,19 @@ class CurbHttpServer:
             )
             return
 
+        circuits = self.circuits_for(serial)
         power_store = self.latest.setdefault(serial, {})
         energy_store = self.energy_wh.setdefault(serial, {})
+        production_store = self.energy_wh_production.setdefault(serial, {})
         for i, wh in enumerate(sample_wh):
             power_store[i] = wh * WH_PER_SEC_TO_W
-            energy_store[i] = energy_store.get(i, 0.0) + abs(wh)
+            if circuits[i].get(CONF_CIRCUIT_BIDIRECTIONAL):
+                if wh > 0:
+                    energy_store[i] = energy_store.get(i, 0.0) + wh
+                elif wh < 0:
+                    production_store[i] = production_store.get(i, 0.0) - wh
+            else:
+                energy_store[i] = energy_store.get(i, 0.0) + abs(wh)
         if (t := sample.get("t")) is not None:
             self.latest_timestamp[serial] = t
 
@@ -277,5 +309,11 @@ class CurbHttpServer:
         # increments batched into a single disk write. HA's Store
         # also flushes on clean shutdown, so worst-case loss is ~30s.
         self._energy_store.async_delay_save(
-            lambda: self.energy_wh, ENERGY_SAVE_DELAY_SECS
+            self._energy_snapshot, ENERGY_SAVE_DELAY_SECS
         )
+
+    def _energy_snapshot(self) -> dict[str, Any]:
+        return {
+            "energy": self.energy_wh,
+            "production": self.energy_wh_production,
+        }

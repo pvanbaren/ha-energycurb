@@ -1,4 +1,4 @@
-"""Sensor platform — 18 power + 18 energy sensors per Curb hub."""
+"""Sensor platform — 18 power + 18 energy (+ production for bidirectional) sensors per Curb hub."""
 from __future__ import annotations
 
 import logging
@@ -16,6 +16,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
+    CONF_CIRCUIT_BIDIRECTIONAL,
     CONF_CIRCUIT_NAME,
     DOMAIN,
     NUM_CIRCUITS,
@@ -38,9 +39,14 @@ async def async_setup_entry(
     @callback
     def _add_device(serial: str) -> None:
         entities: list[SensorEntity] = []
+        circuits = server.circuits_for(serial)
         for i in range(NUM_CIRCUITS):
             entities.append(CurbCircuitPowerSensor(server, serial, i))
             entities.append(CurbCircuitEnergySensor(server, serial, i))
+            if circuits[i].get(CONF_CIRCUIT_BIDIRECTIONAL):
+                entities.append(
+                    CurbCircuitEnergyProductionSensor(server, serial, i)
+                )
         async_add_entities(entities)
 
     entry.async_on_unload(
@@ -113,11 +119,16 @@ class CurbCircuitPowerSensor(_CurbCircuitBase):
         return self._idx in self._server.latest.get(self._serial, {})
 
 
-class CurbCircuitEnergySensor(_CurbCircuitBase):
+class _CurbCircuitEnergyBase(_CurbCircuitBase):
     _attr_device_class = SensorDeviceClass.ENERGY
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
     _attr_suggested_display_precision = 3
+
+    # Subclasses set these to pick which server store backs the sensor.
+    _unique_id_suffix: str = ""
+    _name_suffix: str = ""
+    _store_attr: str = ""
 
     def __init__(
         self,
@@ -126,16 +137,36 @@ class CurbCircuitEnergySensor(_CurbCircuitBase):
         circuit_idx: int,
     ) -> None:
         super().__init__(server, serial, circuit_idx)
-        self._attr_unique_id = f"curb_{serial}_circuit_{circuit_idx + 1}_energy"
-        self._attr_name = f"{self._friendly} Energy"
+        self._attr_unique_id = (
+            f"curb_{serial}_circuit_{circuit_idx + 1}{self._unique_id_suffix}"
+        )
+        self._attr_name = f"{self._friendly}{self._name_suffix}"
+
+    def _store(self) -> dict[str, dict[int, float]]:
+        return getattr(self._server, self._store_attr)
 
     @property
     def native_value(self) -> float | None:
-        wh = self._server.energy_wh.get(self._serial, {}).get(self._idx)
+        wh = self._store().get(self._serial, {}).get(self._idx)
         if wh is None:
             return None
         return wh / 1000.0
 
     @property
     def available(self) -> bool:
-        return self._idx in self._server.energy_wh.get(self._serial, {})
+        return self._idx in self._store().get(self._serial, {})
+
+
+class CurbCircuitEnergySensor(_CurbCircuitEnergyBase):
+    # Shared unique_id across both modes so toggling the bidirectional
+    # flag doesn't spawn a new entity (and doesn't lose long-term
+    # history) — the store's meaning shifts, but the sensor stays.
+    _unique_id_suffix = "_energy"
+    _name_suffix = " Energy"
+    _store_attr = "energy_wh"
+
+
+class CurbCircuitEnergyProductionSensor(_CurbCircuitEnergyBase):
+    _unique_id_suffix = "_energy_production"
+    _name_suffix = " Energy Production"
+    _store_attr = "energy_wh_production"

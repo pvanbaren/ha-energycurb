@@ -27,6 +27,7 @@ CONF_CIRCUIT_NAME = "name"
 CONF_CIRCUIT_CLAMP = "clamp"
 CONF_CIRCUIT_VOLTAGE = "voltage"
 CONF_CIRCUIT_POLARITY = "polarity"
+CONF_CIRCUIT_BIDIRECTIONAL = "bidirectional"
 
 # Option-value strings must match HA's translation-key regex
 # `[a-z0-9-_]+` (no leading/trailing - or _) so they can key into the
