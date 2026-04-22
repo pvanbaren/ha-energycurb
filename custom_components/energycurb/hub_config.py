@@ -26,6 +26,7 @@ from .const import (
     CONF_CIRCUIT_VOLTAGE,
     NUM_CIRCUITS,
     POLARITY_NEGATIVE,
+    VOLTAGE_110,
     VOLTAGE_220,
 )
 
@@ -47,50 +48,51 @@ DEFAULT_ENDPOINTS = {
     "diagnostics": "http://border.prod.energycurb.com/v3/diagnostics",
 }
 
-# Canonical v3.1 CT-clamp multipliers, keyed by the user-facing clamp
-# label. `definition_id` is the string the firmware stores in
-# `clamp_definition_id`.
-CT_V3: dict[str, dict[str, Any]] = {
+# v3.1 CT-clamp multipliers as emitted by Curb's production pipeline,
+# keyed by (user-facing clamp label, voltage). Values are copied
+# verbatim from reference production hub-config.json files so they
+# serialize byte-identically — we can't compute 220V as 2× 110V and
+# expect bit-exact output, because Curb's calibration pipeline rounds
+# the two voltages independently (visible on XIAMEN30, where the 220V
+# entry differs from 2× the 110V entry by one ULP).
+_DEFINITION_ID: dict[str, str] = {
+    CLAMP_30A:  "XIAMEN30",
+    CLAMP_50A:  "XIAMEN50",
+    CLAMP_100A: "XIAMEN100",
+}
+
+_MULTIPLIERS: dict[str, dict[str, tuple[float, float, float]]] = {
+    #               (i_multiplier,            w_multiplier,   var_multiplier)
     CLAMP_30A: {
-        "definition_id": "XIAMEN30",
-        "i_multiplier": 5.2290755588493e-06,
-        "w_multiplier": 0.00026897918,
-        "var_multiplier": 0.00026897918,
+        VOLTAGE_110: (5.2290755588493e-06,    0.00026897918,  0.00026897918),
+        VOLTAGE_220: (1.0458151117699e-05,    0.00053795836,  0.00053795836),
     },
     CLAMP_50A: {
-        "definition_id": "XIAMEN50",
-        "i_multiplier": 8.73962e-06,
-        "w_multiplier": 0.00044961108,
-        "var_multiplier": 0.00044961108,
+        VOLTAGE_110: (8.73962e-06,            0.00044961108,  0.00044961108),
+        VOLTAGE_220: (1.747924e-05,           0.00089922216,  0.00089922216),
     },
     CLAMP_100A: {
-        "definition_id": "XIAMEN100",
-        "i_multiplier": 1.7609849656268e-05,
-        "w_multiplier": 0.00091863534,
-        "var_multiplier": 0.00091863534,
+        VOLTAGE_110: (1.7609849656268e-05,    0.00091863534,  0.00091863534),
+        VOLTAGE_220: (3.5219699312536e-05,    0.00183727068,  0.00183727068),
     },
 }
 
 
 def _build_channel(circuit: dict[str, Any]) -> dict[str, Any] | str:
     clamp = circuit.get(CONF_CIRCUIT_CLAMP)
-    if clamp not in CT_V3:
+    voltage = circuit.get(CONF_CIRCUIT_VOLTAGE)
+    if clamp not in _MULTIPLIERS or voltage not in _MULTIPLIERS[clamp]:
         # lamarr/config.lua stores empty slots as the bare string 'none'
         return "none"
 
-    base = CT_V3[clamp]
-    # 240V circuits in a split-phase panel see line-to-line voltage but
-    # the group's v_multiplier is calibrated line-to-neutral, so the
-    # hub under-reports power by 2x. Compensate on the channel's
-    # energy multipliers; current is unaffected.
-    w_scale = 2.0 if circuit.get(CONF_CIRCUIT_VOLTAGE) == VOLTAGE_220 else 1.0
+    i_mul, w_mul, var_mul = _MULTIPLIERS[clamp][voltage]
     sign = -1.0 if circuit.get(CONF_CIRCUIT_POLARITY) == POLARITY_NEGATIVE else 1.0
 
     return {
-        "clamp_definition_id": base["definition_id"],
-        "i_multiplier":   sign * base["i_multiplier"],
-        "w_multiplier":   sign * base["w_multiplier"] * w_scale,
-        "var_multiplier": sign * base["var_multiplier"] * w_scale,
+        "clamp_definition_id": _DEFINITION_ID[clamp],
+        "i_multiplier":   sign * i_mul,
+        "w_multiplier":   sign * w_mul,
+        "var_multiplier": sign * var_mul,
         "i_offset": 0,
         "w_offset": 0,
         "var_offset": 0,
