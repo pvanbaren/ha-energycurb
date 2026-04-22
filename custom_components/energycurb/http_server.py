@@ -35,6 +35,33 @@ def _try_msgpack(data: bytes) -> Any:
         return None
 
 
+def _pending_key(entry: ConfigEntry) -> str:
+    return f"_pending_messages_{entry.entry_id}"
+
+
+def _pending_messages(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> dict[str, list[dict[str, Any]]]:
+    """Per-entry outbound message queue, keyed by hub serial.
+
+    Lives in hass.data (not on the server instance) so enqueued messages
+    survive integration reloads — options changes trigger a reload, and
+    the notification we enqueue just before saving has to still be there
+    when the new server comes up to answer the hub's next poll.
+    """
+    return hass.data.setdefault(DOMAIN, {}).setdefault(_pending_key(entry), {})
+
+
+def enqueue_hub_message(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    serial: str,
+    message: dict[str, Any],
+) -> None:
+    """Queue `message` to hand back to `serial` on its next /v3/messages GET."""
+    _pending_messages(hass, entry).setdefault(serial, []).append(message)
+
+
 class EnergyCurbHttpServer:
     """aiohttp server bound on a user-chosen host/port that sinks Curb samples."""
 
@@ -59,13 +86,17 @@ class EnergyCurbHttpServer:
         app = web.Application()
         app.router.add_post("/v3/samples/{serial}", self._handle_samples)
         app.router.add_get("/v3/hub_config/{serial}", self._handle_hub_config)
+        app.router.add_get("/v3/messages/{serial}", self._handle_messages)
+        app.router.add_post("/v3/messages/{serial}", self._handle_messages_post)
         self._runner = web.AppRunner(app, access_log=None)
         await self._runner.setup()
         self._site = web.TCPSite(self._runner, host=self.host, port=self.port)
         await self._site.start()
         _LOGGER.info(
-            "EnergyCurb listening on %s:%d (POST /v3/samples/<serial>, "
-            "GET /v3/hub_config/<serial>)",
+            "EnergyCurb listening on %s:%d "
+            "(POST /v3/samples/<serial>, "
+            "GET /v3/hub_config/<serial>, "
+            "GET/POST /v3/messages/<serial>)",
             self.host,
             self.port,
         )
@@ -141,6 +172,39 @@ class EnergyCurbHttpServer:
             content_type="application/json",
             text=json.dumps(body, indent=4),
         )
+
+    async def _handle_messages(self, request: web.Request) -> web.Response:
+        """Serve the hub's every-5s message poll.
+
+        `?get_count=true` → {"number_of_available_hub_messages": N}.
+        No query → dequeue one message body, or 404 if the queue is empty
+        (HubMessaging treats any non-200 as "stop polling").
+        """
+        serial = request.match_info["serial"]
+        queue = _pending_messages(self.hass, self.entry).setdefault(serial, [])
+
+        if request.query.get("get_count") == "true":
+            return web.Response(
+                status=200,
+                content_type="application/json",
+                text=json.dumps({"number_of_available_hub_messages": len(queue)}),
+            )
+
+        if not queue:
+            return web.Response(status=404, text="no messages")
+
+        message = queue.pop(0)
+        return web.Response(
+            status=200,
+            content_type="application/json",
+            text=json.dumps(message),
+        )
+
+    async def _handle_messages_post(self, request: web.Request) -> web.Response:
+        # Hub-to-server messages (diagnostics, state, etc.). We don't
+        # consume them yet — just acknowledge with 201 so the hub
+        # doesn't log the post as failed.
+        return web.Response(status=201)
 
     def _apply_sample(self, serial: str, sample: dict[str, Any]) -> None:
         watts: list[float] = []

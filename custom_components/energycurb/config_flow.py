@@ -42,6 +42,7 @@ from .const import (
     POLARITY_CHOICES,
     VOLTAGE_CHOICES,
 )
+from .http_server import enqueue_hub_message
 from .hub_config import _default_circuit_name, default_circuits
 
 
@@ -218,6 +219,17 @@ class EnergyCurbOptionsFlow(OptionsFlow):
             new_options = copy.deepcopy(dict(self._entry.options))
             devices = new_options.setdefault(CONF_DEVICES, {})
             devices[self._serial] = {CONF_CIRCUITS: circuits}
+
+            # Tell the hub to fetch the new hub-config.json on its next
+            # 5-second message poll, instead of waiting up to 5 minutes
+            # for the periodic config refresh. hass.data persists across
+            # the reload that async_create_entry triggers, so the
+            # enqueued notification is still there when the new server
+            # comes up.
+            enqueue_hub_message(
+                self.hass, self._entry, self._serial, {"type": "config"}
+            )
+
             return self.async_create_entry(title="", data=new_options)
 
         return self.async_show_form(
