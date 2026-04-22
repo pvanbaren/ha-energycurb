@@ -1,3 +1,5 @@
+<img src="icon.png" alt="" align="right" width="96" height="96">
+
 # EnergyCurb — Home Assistant Integration
 
 Receive live energy data directly from orphaned **Curb Energy Monitor** hubs
@@ -75,11 +77,26 @@ On the first POST from a serial, the integration:
 After a restart, sensors show `unavailable` until the hub's next POST
 (usually seconds later). Long-term statistics are preserved.
 
-## Circuit names
+## Circuit configuration
 
-The hub reports circuits in a fixed order with no labels. Rename the 18
-entities per hub in the HA UI — those names persist. A future release may
-accept a circuit-name map in the options flow.
+Each hub exposes 18 circuits in a fixed physical order (groups of 6, 6, 3, 3).
+From **Settings → Devices & services → EnergyCurb → Configure**, assign per
+circuit:
+
+- **Name** — shown as the sensor's friendly name in HA. Defaults run
+  A1–A6, B1–B6, C1–C6.
+- **Current clamp** — `100A`, `50A`, or `30A` (Xiamen CT).
+- **Voltage** — `110V` or `220V`. 220 V circuits get a 2× scale on
+  `w_multiplier` / `var_multiplier` to compensate for the group's
+  line-to-neutral voltage reference.
+- **Polarity** — `+` for a correctly-oriented clamp, `-` to flip the sign
+  of the channel's multipliers.
+
+These values are compiled into a v3.1 `hub-config.json` and served at
+`GET /v3/hub_config/<serial>`, so point your hub's config endpoint at this
+integration (alongside the samples endpoint) and it will pull the config
+on boot. The format mirrors the file that
+[`configure_device.py`](https://github.com/codearranger/curbed) generates.
 
 ## Troubleshooting
 
