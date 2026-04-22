@@ -1,7 +1,6 @@
 """Build a v3.1 hub-config.json body for a Curb hub.
 
-Mirrors the subset of ../energycurb/configure_device.py that we need at
-runtime: given an 18-circuit list (name / clamp / voltage / polarity per
+Given an 18-circuit list (name / clamp / voltage / polarity per
 entry), emit the hub-config.json the Lamarr streamer expects from
 /v3/hub_config/<hub_id>.
 
