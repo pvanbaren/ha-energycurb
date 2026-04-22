@@ -13,6 +13,7 @@ from homeassistant.config_entries import (
     OptionsFlow,
 )
 from homeassistant.core import callback
+from homeassistant.data_entry_flow import section
 from homeassistant.helpers.selector import (
     NumberSelector,
     NumberSelectorConfig,
@@ -85,8 +86,9 @@ class EnergyCurbConfigFlow(ConfigFlow, domain=DOMAIN):
         return EnergyCurbOptionsFlow(entry)
 
 
-def _circuit_field(circuit_idx: int) -> str:
-    # Flat field names: c1_name, c1_clamp, c1_voltage, c1_polarity, ...
+def _section_key(circuit_idx: int) -> str:
+    # One section per circuit: c1, c2, …, c18. strings.json names each
+    # section with its physical position label (A1–C6).
     return f"c{circuit_idx + 1}"
 
 
@@ -172,22 +174,30 @@ class EnergyCurbOptionsFlow(OptionsFlow):
         return default_circuits()
 
     def _circuits_schema(self, defaults: list[dict[str, Any]]) -> vol.Schema:
-        schema: dict[Any, Any] = {}
+        fields: dict[Any, Any] = {}
         for i, ch in enumerate(defaults):
-            base = _circuit_field(i)
-            schema[vol.Required(
-                f"{base}_name", default=ch.get(CONF_CIRCUIT_NAME, _default_circuit_name(i))
-            )] = TextSelector()
-            schema[vol.Required(
-                f"{base}_clamp", default=ch.get(CONF_CIRCUIT_CLAMP, CLAMP_CHOICES[0])
-            )] = _clamp_selector()
-            schema[vol.Required(
-                f"{base}_voltage", default=ch.get(CONF_CIRCUIT_VOLTAGE, VOLTAGE_CHOICES[0])
-            )] = _voltage_selector()
-            schema[vol.Required(
-                f"{base}_polarity", default=ch.get(CONF_CIRCUIT_POLARITY, POLARITY_CHOICES[0])
-            )] = _polarity_selector()
-        return vol.Schema(schema)
+            sub = vol.Schema(
+                {
+                    vol.Required(
+                        "name",
+                        default=ch.get(CONF_CIRCUIT_NAME, _default_circuit_name(i)),
+                    ): TextSelector(),
+                    vol.Required(
+                        "clamp",
+                        default=ch.get(CONF_CIRCUIT_CLAMP, CLAMP_CHOICES[0]),
+                    ): _clamp_selector(),
+                    vol.Required(
+                        "voltage",
+                        default=ch.get(CONF_CIRCUIT_VOLTAGE, VOLTAGE_CHOICES[0]),
+                    ): _voltage_selector(),
+                    vol.Required(
+                        "polarity",
+                        default=ch.get(CONF_CIRCUIT_POLARITY, POLARITY_CHOICES[0]),
+                    ): _polarity_selector(),
+                }
+            )
+            fields[vol.Required(_section_key(i))] = section(sub, {"collapsed": False})
+        return vol.Schema(fields)
 
     async def async_step_circuits(
         self, user_input: dict[str, Any] | None = None
@@ -197,12 +207,12 @@ class EnergyCurbOptionsFlow(OptionsFlow):
         if user_input is not None:
             circuits: list[dict[str, Any]] = []
             for i in range(NUM_CIRCUITS):
-                base = _circuit_field(i)
+                sub = user_input[_section_key(i)]
                 circuits.append({
-                    CONF_CIRCUIT_NAME: user_input[f"{base}_name"],
-                    CONF_CIRCUIT_CLAMP: user_input[f"{base}_clamp"],
-                    CONF_CIRCUIT_VOLTAGE: user_input[f"{base}_voltage"],
-                    CONF_CIRCUIT_POLARITY: user_input[f"{base}_polarity"],
+                    CONF_CIRCUIT_NAME: sub["name"],
+                    CONF_CIRCUIT_CLAMP: sub["clamp"],
+                    CONF_CIRCUIT_VOLTAGE: sub["voltage"],
+                    CONF_CIRCUIT_POLARITY: sub["polarity"],
                 })
 
             new_options = copy.deepcopy(dict(self._entry.options))
