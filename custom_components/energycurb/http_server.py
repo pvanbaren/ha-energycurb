@@ -27,6 +27,14 @@ from .hub_config import build_hub_config, default_circuits
 _LOGGER = logging.getLogger(__name__)
 
 
+def _try_msgpack(data: bytes) -> Any:
+    """Return the decoded MessagePack object, or None if data isn't msgpack."""
+    try:
+        return msgpack.unpackb(data, raw=False, strict_map_key=False)
+    except Exception:
+        return None
+
+
 class EnergyCurbHttpServer:
     """aiohttp server bound on a user-chosen host/port that sinks Curb samples."""
 
@@ -80,24 +88,32 @@ class EnergyCurbHttpServer:
 
     async def _handle_samples(self, request: web.Request) -> web.Response:
         serial = request.match_info["serial"]
-        raw = await request.read()
+        data = await request.read()
 
-        data = raw
-        if request.headers.get("Content-Encoding", "").lower() == "deflate":
-            try:
-                data = zlib.decompress(raw)
-            except zlib.error:
+        # aiohttp auto-inflates Content-Encoding: deflate bodies in current
+        # releases, so `data` is usually already the MessagePack payload.
+        # Older aiohttp (or a proxy that passes the body through verbatim)
+        # hands us the still-compressed bytes, so fall back to an explicit
+        # inflate when the first decode fails.
+        payload = _try_msgpack(data)
+        if payload is None:
+            for wbits in (zlib.MAX_WBITS, -zlib.MAX_WBITS):
                 try:
-                    data = zlib.decompress(raw, -zlib.MAX_WBITS)
-                except zlib.error as err:
-                    _LOGGER.warning("deflate error from %s: %s", serial, err)
-                    return web.Response(status=400, text="bad deflate body")
+                    inflated = zlib.decompress(data, wbits)
+                except zlib.error:
+                    continue
+                payload = _try_msgpack(inflated)
+                if payload is not None:
+                    break
 
-        try:
-            payload = msgpack.unpackb(data, raw=False, strict_map_key=False)
-        except Exception as err:  # msgpack raises several distinct types
-            _LOGGER.warning("msgpack error from %s: %s", serial, err)
-            return web.Response(status=400, text="bad msgpack body")
+        if payload is None:
+            _LOGGER.warning(
+                "undecodable body from %s (%d bytes, Content-Encoding=%r)",
+                serial,
+                len(data),
+                request.headers.get("Content-Encoding"),
+            )
+            return web.Response(status=400, text="bad body")
 
         samples = payload.get("s", []) if isinstance(payload, dict) else []
         samples = sorted(samples, key=lambda s: s.get("t", 0))
