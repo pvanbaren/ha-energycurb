@@ -74,6 +74,28 @@ in the options flow, overwriting what you just hand-edited. Your edits
 to the `endpoints` block are preserved on each regeneration because the
 integration echoes back whatever host:port the hub used to reach it.
 
+### Keeping the hub's original hub-config.json
+
+If you'd rather keep the factory per-channel calibration on the hub
+untouched and not have the integration regenerate anything, point the
+`hub_config` endpoint at an address that will never respond — e.g. a
+blackhole route or a reserved loopback like `http://127.0.0.1:1`:
+
+```json
+"endpoints": {
+    "hub_config":  "http://127.0.0.1:1/v3/hub_config",
+    "messages":    "http://<ha-host>:8989/v3/messages",
+    "samples":     "http://<ha-host>:8989/v3/samples",
+    "diagnostics": "http://<ha-host>:8989/v3/diagnostics"
+},
+```
+
+The streamer's every-5-minute config poll will fail silently and the
+hub keeps using whatever is already in `/data/hub-config.json`. Samples,
+messages and diagnostics still flow to this integration, so the 18
+sensor entities work normally — you just won't be able to change the
+clamp/voltage mapping from the HA options flow.
+
 ## How devices appear
 
 On the first POST from a serial, the integration:
