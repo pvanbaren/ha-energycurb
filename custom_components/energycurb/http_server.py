@@ -242,13 +242,13 @@ class CurbHttpServer:
 
     def _apply_sample(self, serial: str, sample: dict[str, Any]) -> None:
         # Hub reports `w` per channel as signed Wh over the sample
-        # interval. We keep two views: the power sensor wants W
-        # (|w| * 3600), and the energy counter accumulates |w| in Wh.
+        # interval. The power sensor exposes the signed W reading; the
+        # energy counter accumulates |w| in Wh to stay monotonic.
         sample_wh: list[float] = []
         for group in sample.get("g", []):
             for ch in group.get("c", []):
                 w_wh = ch.get("w") or 0
-                sample_wh.append(abs(float(w_wh)))
+                sample_wh.append(float(w_wh))
         if len(sample_wh) != NUM_CIRCUITS:
             _LOGGER.debug(
                 "%s: expected %d circuits, got %d — skipping",
@@ -262,7 +262,7 @@ class CurbHttpServer:
         energy_store = self.energy_wh.setdefault(serial, {})
         for i, wh in enumerate(sample_wh):
             power_store[i] = wh * WH_PER_SEC_TO_W
-            energy_store[i] = energy_store.get(i, 0.0) + wh
+            energy_store[i] = energy_store.get(i, 0.0) + abs(wh)
         if (t := sample.get("t")) is not None:
             self.latest_timestamp[serial] = t
 
