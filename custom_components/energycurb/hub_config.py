@@ -25,6 +25,7 @@ from .const import (
     CONF_CIRCUIT_VOLTAGE,
     NUM_CIRCUITS,
     POLARITY_NEGATIVE,
+    POLARITY_POSITIVE,
     VOLTAGE_110,
     VOLTAGE_220,
 )
@@ -175,8 +176,8 @@ def default_circuits() -> list[dict[str, Any]]:
         {
             CONF_CIRCUIT_NAME: _default_circuit_name(i),
             CONF_CIRCUIT_CLAMP: CLAMP_30A,
-            CONF_CIRCUIT_VOLTAGE: "110V",
-            CONF_CIRCUIT_POLARITY: "+",
+            CONF_CIRCUIT_VOLTAGE: VOLTAGE_110,
+            CONF_CIRCUIT_POLARITY: POLARITY_POSITIVE,
         }
         for i in range(NUM_CIRCUITS)
     ]

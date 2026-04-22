@@ -28,17 +28,21 @@ CONF_CIRCUIT_CLAMP = "clamp"
 CONF_CIRCUIT_VOLTAGE = "voltage"
 CONF_CIRCUIT_POLARITY = "polarity"
 
-CLAMP_30A = "30A"
-CLAMP_50A = "50A"
-CLAMP_100A = "100A"
+# Option-value strings must match HA's translation-key regex
+# `[a-z0-9-_]+` (no leading/trailing - or _) so they can key into the
+# selector translations in strings.json. Display labels ("100 A",
+# "Normal (+)", etc.) come from those translations and are unaffected.
+CLAMP_30A = "30a"
+CLAMP_50A = "50a"
+CLAMP_100A = "100a"
 CLAMP_CHOICES = [CLAMP_100A, CLAMP_50A, CLAMP_30A]
 
-VOLTAGE_110 = "110V"
-VOLTAGE_220 = "220V"
+VOLTAGE_110 = "110v"
+VOLTAGE_220 = "220v"
 VOLTAGE_CHOICES = [VOLTAGE_110, VOLTAGE_220]
 
-POLARITY_POSITIVE = "+"
-POLARITY_NEGATIVE = "-"
+POLARITY_POSITIVE = "positive"
+POLARITY_NEGATIVE = "negative"
 POLARITY_CHOICES = [POLARITY_POSITIVE, POLARITY_NEGATIVE]
 
 # Chip/group layout of a full 00614 hub: 4 ADE chips sum to 18 channels.

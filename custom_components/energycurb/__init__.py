@@ -1,19 +1,59 @@
 """The Curb integration."""
 from __future__ import annotations
 
+import copy
 import logging
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
-from .const import CONF_HOST, CONF_PORT, DOMAIN, PLATFORMS
+from .const import (
+    CONF_CIRCUITS,
+    CONF_CIRCUIT_CLAMP,
+    CONF_CIRCUIT_POLARITY,
+    CONF_CIRCUIT_VOLTAGE,
+    CONF_DEVICES,
+    CONF_HOST,
+    CONF_PORT,
+    DOMAIN,
+    PLATFORMS,
+)
 from .http_server import CurbHttpServer
 
 _LOGGER = logging.getLogger(__name__)
 
+# Pre-validator option values shipped in early 0.1.x. Translation keys
+# must match [a-z0-9-_]+, so any stored options still carrying the old
+# spellings get rewritten on load.
+_LEGACY_OPTION_VALUES: dict[str, dict[str, str]] = {
+    CONF_CIRCUIT_CLAMP:    {"100A": "100a", "50A": "50a", "30A": "30a"},
+    CONF_CIRCUIT_VOLTAGE:  {"110V": "110v", "220V": "220v"},
+    CONF_CIRCUIT_POLARITY: {"+": "positive", "-": "negative"},
+}
+
+
+def _migrate_legacy_option_values(options: dict[str, Any]) -> bool:
+    """Rewrite any circuit field still carrying a pre-validator value.
+    Returns True if anything changed."""
+    changed = False
+    for device in options.get(CONF_DEVICES, {}).values():
+        for circuit in device.get(CONF_CIRCUITS, []):
+            for field, mapping in _LEGACY_OPTION_VALUES.items():
+                if (new := mapping.get(circuit.get(field))) is not None:
+                    circuit[field] = new
+                    changed = True
+    return changed
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    # Before the server or sensors touch anything, normalize any
+    # pre-validator option values left behind in storage.
+    migrated = copy.deepcopy(dict(entry.options))
+    if _migrate_legacy_option_values(migrated):
+        hass.config_entries.async_update_entry(entry, options=migrated)
+
     host: str = entry.data[CONF_HOST]
     port: int = int(entry.data[CONF_PORT])
 

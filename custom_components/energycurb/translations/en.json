@@ -55,21 +55,21 @@
   "selector": {
     "clamp": {
       "options": {
-        "100A": "100 A",
-        "50A": "50 A",
-        "30A": "30 A"
+        "100a": "100 A",
+        "50a": "50 A",
+        "30a": "30 A"
       }
     },
     "voltage": {
       "options": {
-        "110V": "110 V",
-        "220V": "220 V"
+        "110v": "110 V",
+        "220v": "220 V"
       }
     },
     "polarity": {
       "options": {
-        "+": "Normal (+)",
-        "-": "Reversed (-)"
+        "positive": "Normal (+)",
+        "negative": "Reversed (-)"
       }
     }
   }
