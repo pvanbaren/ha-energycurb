@@ -12,7 +12,6 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from .const import (
     CONF_CIRCUITS,
     CONF_CIRCUIT_CLAMP,
-    CONF_CIRCUIT_POLARITY,
     CONF_CIRCUIT_VOLTAGE,
     CONF_DEVICES,
     CONF_HOST,
@@ -28,9 +27,8 @@ _LOGGER = logging.getLogger(__name__)
 # must match [a-z0-9-_]+, so any stored options still carrying the old
 # spellings get rewritten on load.
 _LEGACY_OPTION_VALUES: dict[str, dict[str, str]] = {
-    CONF_CIRCUIT_CLAMP:    {"100A": "100a", "50A": "50a", "30A": "30a"},
-    CONF_CIRCUIT_VOLTAGE:  {"110V": "110v", "220V": "220v"},
-    CONF_CIRCUIT_POLARITY: {"+": "positive", "-": "negative"},
+    CONF_CIRCUIT_CLAMP:   {"100A": "100a", "50A": "50a", "30A": "30a"},
+    CONF_CIRCUIT_VOLTAGE: {"110V": "110v", "220V": "220v"},
 }
 
 

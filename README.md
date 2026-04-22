@@ -64,8 +64,8 @@ few seconds), not polled.
 4. Open the integration's options flow (Settings → Devices & services
    → Curb → Configure) and, using your backup of the original
    `hub-config.json`, set the clamp (100A / 50A / 30A), voltage
-   (110V / 220V) and polarity for each of the 18 positions to match
-   the `clamp_definition_id` and multiplier values in the backup.
+   (110V / 220V) and inverted flag for each of the 18 positions to
+   match the `clamp_definition_id` and multiplier values in the backup.
 
 From then on the hub posts samples directly to this integration and
 fetches its own future configs from `/v3/hub_config/<serial>` — which
@@ -123,8 +123,8 @@ circuit:
 - **Voltage** — `110V` or `220V`. 220 V circuits get a 2× scale on
   `w_multiplier` / `var_multiplier` to compensate for the group's
   line-to-neutral voltage reference.
-- **Polarity** — `+` for a correctly-oriented clamp, `-` to flip the sign
-  of the channel's multipliers.
+- **Inverted** — leave unchecked for a correctly-oriented clamp; check
+  it to flip the sign of the channel's multipliers.
 
 These values are compiled into a v3.1 `hub-config.json` and served at
 `GET /v3/hub_config/<serial>`, so point your hub's config endpoint at this

@@ -1,6 +1,6 @@
 """Build a v3.1 hub-config.json body for a Curb hub.
 
-Given an 18-circuit list (name / clamp / voltage / polarity per
+Given an 18-circuit list (name / clamp / voltage / inverted per
 entry), emit the hub-config.json the Lamarr streamer expects from
 /v3/hub_config/<hub_id>.
 
@@ -21,12 +21,10 @@ from .const import (
     CLAMP_100A,
     CONF_CIRCUIT_BIDIRECTIONAL,
     CONF_CIRCUIT_CLAMP,
+    CONF_CIRCUIT_INVERTED,
     CONF_CIRCUIT_NAME,
-    CONF_CIRCUIT_POLARITY,
     CONF_CIRCUIT_VOLTAGE,
     NUM_CIRCUITS,
-    POLARITY_NEGATIVE,
-    POLARITY_POSITIVE,
     VOLTAGE_110,
     VOLTAGE_220,
 )
@@ -87,7 +85,7 @@ def _build_channel(circuit: dict[str, Any]) -> dict[str, Any] | str:
         return "none"
 
     i_mul, w_mul, var_mul = _MULTIPLIERS[clamp][voltage]
-    sign = -1.0 if circuit.get(CONF_CIRCUIT_POLARITY) == POLARITY_NEGATIVE else 1.0
+    sign = -1.0 if circuit.get(CONF_CIRCUIT_INVERTED) else 1.0
 
     return {
         "clamp_definition_id": _DEFINITION_ID[clamp],
@@ -178,7 +176,7 @@ def default_circuits() -> list[dict[str, Any]]:
             CONF_CIRCUIT_NAME: _default_circuit_name(i),
             CONF_CIRCUIT_CLAMP: CLAMP_30A,
             CONF_CIRCUIT_VOLTAGE: VOLTAGE_110,
-            CONF_CIRCUIT_POLARITY: POLARITY_POSITIVE,
+            CONF_CIRCUIT_INVERTED: False,
             CONF_CIRCUIT_BIDIRECTIONAL: False,
         }
         for i in range(NUM_CIRCUITS)

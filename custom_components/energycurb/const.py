@@ -26,13 +26,13 @@ CONF_SERIAL = "serial"
 CONF_CIRCUIT_NAME = "name"
 CONF_CIRCUIT_CLAMP = "clamp"
 CONF_CIRCUIT_VOLTAGE = "voltage"
-CONF_CIRCUIT_POLARITY = "polarity"
+CONF_CIRCUIT_INVERTED = "inverted"
 CONF_CIRCUIT_BIDIRECTIONAL = "bidirectional"
 
 # Option-value strings must match HA's translation-key regex
 # `[a-z0-9-_]+` (no leading/trailing - or _) so they can key into the
-# selector translations in strings.json. Display labels ("100 A",
-# "Normal (+)", etc.) come from those translations and are unaffected.
+# selector translations in strings.json. Display labels ("100 A", etc.)
+# come from those translations and are unaffected.
 CLAMP_30A = "30a"
 CLAMP_50A = "50a"
 CLAMP_100A = "100a"
@@ -41,10 +41,6 @@ CLAMP_CHOICES = [CLAMP_100A, CLAMP_50A, CLAMP_30A]
 VOLTAGE_110 = "110v"
 VOLTAGE_220 = "220v"
 VOLTAGE_CHOICES = [VOLTAGE_110, VOLTAGE_220]
-
-POLARITY_POSITIVE = "positive"
-POLARITY_NEGATIVE = "negative"
-POLARITY_CHOICES = [POLARITY_POSITIVE, POLARITY_NEGATIVE]
 
 # Chip/group layout of a full 00614 hub: 4 ADE chips sum to 18 channels.
 # The hub-config.json schema lays channels out in this exact order.

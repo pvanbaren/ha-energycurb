@@ -29,8 +29,8 @@ from .const import (
     CONF_CIRCUITS,
     CONF_CIRCUIT_BIDIRECTIONAL,
     CONF_CIRCUIT_CLAMP,
+    CONF_CIRCUIT_INVERTED,
     CONF_CIRCUIT_NAME,
-    CONF_CIRCUIT_POLARITY,
     CONF_CIRCUIT_VOLTAGE,
     CONF_DEVICES,
     CONF_HOST,
@@ -40,7 +40,6 @@ from .const import (
     DEFAULT_PORT,
     DOMAIN,
     NUM_CIRCUITS,
-    POLARITY_CHOICES,
     VOLTAGE_CHOICES,
 )
 from .http_server import enqueue_hub_message
@@ -114,16 +113,6 @@ def _voltage_selector() -> SelectSelector:
     )
 
 
-def _polarity_selector() -> SelectSelector:
-    return SelectSelector(
-        SelectSelectorConfig(
-            options=POLARITY_CHOICES,
-            mode=SelectSelectorMode.DROPDOWN,
-            translation_key="polarity",
-        )
-    )
-
-
 class CurbOptionsFlow(OptionsFlow):
     """Configure the 18 circuits of a specific discovered hub."""
 
@@ -193,9 +182,9 @@ class CurbOptionsFlow(OptionsFlow):
                         default=ch.get(CONF_CIRCUIT_VOLTAGE, VOLTAGE_CHOICES[0]),
                     ): _voltage_selector(),
                     vol.Required(
-                        "polarity",
-                        default=ch.get(CONF_CIRCUIT_POLARITY, POLARITY_CHOICES[0]),
-                    ): _polarity_selector(),
+                        "inverted",
+                        default=bool(ch.get(CONF_CIRCUIT_INVERTED, False)),
+                    ): bool,
                     vol.Required(
                         "bidirectional",
                         default=bool(ch.get(CONF_CIRCUIT_BIDIRECTIONAL, False)),
@@ -218,7 +207,7 @@ class CurbOptionsFlow(OptionsFlow):
                     CONF_CIRCUIT_NAME: sub["name"],
                     CONF_CIRCUIT_CLAMP: sub["clamp"],
                     CONF_CIRCUIT_VOLTAGE: sub["voltage"],
-                    CONF_CIRCUIT_POLARITY: sub["polarity"],
+                    CONF_CIRCUIT_INVERTED: bool(sub["inverted"]),
                     CONF_CIRCUIT_BIDIRECTIONAL: bool(sub["bidirectional"]),
                 })
 
