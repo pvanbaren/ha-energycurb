@@ -146,11 +146,11 @@ on boot.
     logs:
       custom_components.energycurb: debug
   ```
-- **Check the hub's own logs** in `/var/log/` on the device. `sampler.log`
-  is the most useful when samples aren't making it to HA — it shows ADE
-  reads, per-sample errors, and the batches it hands off to `streamer`.
-  `streamer.log` records the actual POSTs and their HTTP status codes;
-  `messages.log` covers the `/v3/messages` polling.
+- **Check the hub's own logs** in `/var/log/` on the device.
+  `streamer.log` is the most useful when samples aren't reaching HA —
+  it records the actual POSTs and their HTTP status codes.
+  `sampler.log` shows ADE reads and per-sample errors on the way into
+  the batch; `messages.log` covers the `/v3/messages` polling.
 
 ## License
 
