@@ -38,7 +38,15 @@ few seconds), not polled.
 1. Gain root access to the hub using
    [codearranger/curbed](https://github.com/codearranger/curbed). That
    project walks through unlocking the hub and getting a shell on it.
-2. On the hub, edit `/data/hub-config.json` and change every URL under
+2. **Back up `/data/hub-config.json` before you touch it** (e.g.
+   `cp /data/hub-config.json /data/hub-config.json.orig` and pull a
+   copy off the hub). The integration regenerates this file on the
+   next config fetch and overwrites your per-channel calibration;
+   the backup is the only record of which physical clamp and voltage
+   is wired to each of the 18 positions, which you'll need to
+   re-enter in the integration's options flow (clamp_definition_id
+   and the 2× multiplier on 220V channels).
+3. On the hub, edit `/data/hub-config.json` and change every URL under
    the `endpoints` block so the host and port match your Home Assistant
    listener. For a default install that's `http://<ha-host>:8989`:
    ```json
@@ -53,6 +61,11 @@ few seconds), not polled.
    with the port you picked in the integration setup. Bump the
    `revision` field by one so the streamer re-reads the file on its
    next poll, then restart the hub (or just the `streamer` service).
+4. Open the integration's options flow (Settings → Devices & services
+   → EnergyCurb → Configure) and, using your backup of the original
+   `hub-config.json`, set the clamp (100A / 50A / 30A), voltage
+   (110V / 220V) and polarity for each of the 18 positions to match
+   the `clamp_definition_id` and multiplier values in the backup.
 
 From then on the hub posts samples directly to this integration and
 fetches its own future configs from `/v3/hub_config/<serial>` — which
