@@ -12,6 +12,7 @@ from aiohttp import web
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.storage import Store
 
 from .const import (
     CONF_CIRCUITS,
@@ -62,6 +63,19 @@ def enqueue_hub_message(
     _pending_messages(hass, entry).setdefault(serial, []).append(message)
 
 
+# --- energy-total persistence --------------------------------------------
+# Per-entry Store holding {serial: {circuit_idx: wh_total}}. Kept off the
+# recorder path — a dedicated JSON file is simpler and guarantees the
+# counter survives even if the recorder DB is wiped.
+
+ENERGY_STORAGE_VERSION = 1
+ENERGY_SAVE_DELAY_SECS = 30  # batch up to 30s of samples into one disk write
+
+
+def _energy_storage_key(entry: ConfigEntry) -> str:
+    return f"{DOMAIN}.{entry.entry_id}.energy"
+
+
 class EnergyCurbHttpServer:
     """aiohttp server bound on a user-chosen host/port that sinks Curb samples."""
 
@@ -79,10 +93,27 @@ class EnergyCurbHttpServer:
         self.serials: set[str] = set()
         self.latest: dict[str, dict[int, float]] = {}
         self.latest_timestamp: dict[str, int] = {}
+        # Cumulative energy per (serial, circuit_idx), in Wh. Monotonic
+        # (we sum abs(w)) so HA's total_increasing semantics hold.
+        self.energy_wh: dict[str, dict[int, float]] = {}
+        self._energy_store: Store = Store(
+            hass, ENERGY_STORAGE_VERSION, _energy_storage_key(entry)
+        )
         self._runner: web.AppRunner | None = None
         self._site: web.BaseSite | None = None
 
     async def async_start(self) -> None:
+        # Restore the persisted energy counters before we accept any
+        # requests, so the first POST's delta is added to the right base
+        # value (and the sensors come up with their last-saved totals).
+        stored = await self._energy_store.async_load()
+        if stored:
+            for serial, circuits in stored.items():
+                self.energy_wh[serial] = {
+                    int(k): float(v) for k, v in circuits.items()
+                }
+                self.serials.add(serial)
+
         app = web.Application()
         app.router.add_post("/v3/samples/{serial}", self._handle_samples)
         app.router.add_get("/v3/hub_config/{serial}", self._handle_hub_config)
@@ -102,6 +133,9 @@ class EnergyCurbHttpServer:
         )
 
     async def async_stop(self) -> None:
+        # Flush any pending energy-counter writes synchronously so a
+        # clean unload/reload doesn't lose the last ≤30s of accumulation.
+        await self._energy_store.async_save(self.energy_wh)
         if self._site is not None:
             await self._site.stop()
             self._site = None
@@ -207,23 +241,28 @@ class EnergyCurbHttpServer:
         return web.Response(status=201)
 
     def _apply_sample(self, serial: str, sample: dict[str, Any]) -> None:
-        watts: list[float] = []
+        # Hub reports `w` per channel as signed Wh over the sample
+        # interval. We keep two views: the power sensor wants W
+        # (|w| * 3600), and the energy counter accumulates |w| in Wh.
+        sample_wh: list[float] = []
         for group in sample.get("g", []):
             for ch in group.get("c", []):
                 w_wh = ch.get("w") or 0
-                watts.append(abs(w_wh) * WH_PER_SEC_TO_W)
-        if len(watts) != NUM_CIRCUITS:
+                sample_wh.append(abs(float(w_wh)))
+        if len(sample_wh) != NUM_CIRCUITS:
             _LOGGER.debug(
                 "%s: expected %d circuits, got %d — skipping",
                 serial,
                 NUM_CIRCUITS,
-                len(watts),
+                len(sample_wh),
             )
             return
 
-        store = self.latest.setdefault(serial, {})
-        for i, w in enumerate(watts):
-            store[i] = w
+        power_store = self.latest.setdefault(serial, {})
+        energy_store = self.energy_wh.setdefault(serial, {})
+        for i, wh in enumerate(sample_wh):
+            power_store[i] = wh * WH_PER_SEC_TO_W
+            energy_store[i] = energy_store.get(i, 0.0) + wh
         if (t := sample.get("t")) is not None:
             self.latest_timestamp[serial] = t
 
@@ -233,4 +272,10 @@ class EnergyCurbHttpServer:
 
         async_dispatcher_send(
             self.hass, SIGNAL_UPDATE_FMT.format(serial=serial)
+        )
+        # Debounced persistence — up to ENERGY_SAVE_DELAY_SECS of
+        # increments batched into a single disk write. HA's Store
+        # also flushes on clean shutdown, so worst-case loss is ~30s.
+        self._energy_store.async_delay_save(
+            lambda: self.energy_wh, ENERGY_SAVE_DELAY_SECS
         )
