@@ -160,22 +160,6 @@ def build_hub_config(
         "revision": int(time.time()) if revision is None else revision,
         "endpoints": _endpoints_for(base_url),
         "sampling": {"sample_period_ms": 1000, "samples_per_post": 1},
-        "load_control": {
-            "is_enabled": False,
-            "disable_until": 0,
-            "utc_offset_hours": 0,
-            "enforcement_windows": [],
-            "enforcement_window_exceptions": [],
-            "load_circuits": [],
-            "relays": [],
-            "monitor_interval_mins": 30,
-            "monitor_interval_guard_mins": 2,
-            "monitor_average_mins": 2,
-            "control_minimum_off_mins": 5,
-            "control_maximum_off_mins": 5,
-            "control_minimum_delay_mins": 5,
-            "control_priority_step_mins": 1,
-        },
         "sensors": {"groups": groups_out},
     }
 
