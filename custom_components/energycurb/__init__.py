@@ -1,4 +1,4 @@
-"""The EnergyCurb integration."""
+"""The Curb integration."""
 from __future__ import annotations
 
 import logging
@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
 from .const import CONF_HOST, CONF_PORT, DOMAIN, PLATFORMS
-from .http_server import EnergyCurbHttpServer
+from .http_server import CurbHttpServer
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     host: str = entry.data[CONF_HOST]
     port: int = int(entry.data[CONF_PORT])
 
-    server = EnergyCurbHttpServer(hass, entry, host, port)
+    server = CurbHttpServer(hass, entry, host, port)
     try:
         await server.async_start()
     except OSError as err:
@@ -34,7 +34,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    server: EnergyCurbHttpServer | None = hass.data.get(DOMAIN, {}).pop(
+    server: CurbHttpServer | None = hass.data.get(DOMAIN, {}).pop(
         entry.entry_id, None
     )
     if server is not None:

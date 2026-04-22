@@ -76,7 +76,7 @@ def _energy_storage_key(entry: ConfigEntry) -> str:
     return f"{DOMAIN}.{entry.entry_id}.energy"
 
 
-class EnergyCurbHttpServer:
+class CurbHttpServer:
     """aiohttp server bound on a user-chosen host/port that sinks Curb samples."""
 
     def __init__(
@@ -124,7 +124,7 @@ class EnergyCurbHttpServer:
         self._site = web.TCPSite(self._runner, host=self.host, port=self.port)
         await self._site.start()
         _LOGGER.info(
-            "EnergyCurb listening on %s:%d "
+            "Curb listening on %s:%d "
             "(POST /v3/samples/<serial>, "
             "GET /v3/hub_config/<serial>, "
             "GET/POST /v3/messages/<serial>)",

@@ -1,6 +1,6 @@
 <img src="icon.png" alt="" align="right" width="96" height="96">
 
-# EnergyCurb — Home Assistant Integration
+# Curb — Home Assistant Integration
 
 Receive live energy data directly from orphaned **Curb Energy Monitor** hubs
 and surface it as native Home Assistant sensors — no MQTT, no polling.
@@ -29,8 +29,8 @@ few seconds), not polled.
 
 1. In HACS → Integrations → ⋯ → **Custom repositories**, add
    `https://github.com/pvanbaren/ha-energycurb` with category **Integration**.
-2. Install **EnergyCurb** and restart Home Assistant.
-3. Settings → Devices & services → **Add integration** → **EnergyCurb**.
+2. Install **Curb** and restart Home Assistant.
+3. Settings → Devices & services → **Add integration** → **Curb**.
 4. Enter the bind host (`0.0.0.0` is fine) and port.
 
 ## Pointing your hub at this integration
@@ -62,7 +62,7 @@ few seconds), not polled.
    `revision` field by one so the streamer re-reads the file on its
    next poll, then restart the hub (or just the `streamer` service).
 4. Open the integration's options flow (Settings → Devices & services
-   → EnergyCurb → Configure) and, using your backup of the original
+   → Curb → Configure) and, using your backup of the original
    `hub-config.json`, set the clamp (100A / 50A / 30A), voltage
    (110V / 220V) and polarity for each of the 18 positions to match
    the `clamp_definition_id` and multiplier values in the backup.
@@ -114,7 +114,7 @@ After a restart, sensors show `unavailable` until the hub's next POST
 ## Circuit configuration
 
 Each hub exposes 18 circuits in a fixed physical order (groups of 6, 6, 3, 3).
-From **Settings → Devices & services → EnergyCurb → Configure**, assign per
+From **Settings → Devices & services → Curb → Configure**, assign per
 circuit:
 
 - **Name** — shown as the sensor's friendly name in HA. Defaults run
@@ -136,7 +136,7 @@ on boot.
 - **Nothing shows up**: confirm the hub's `/data/hub-config.json` has
   your HA host:port in every `endpoints.*` URL, and check the hub's
   `/var/log/streamer.log` for POST responses. Check HA logs for
-  `EnergyCurb listening on …`.
+  `Curb listening on …`.
 - **`Failed to bind … Address already in use`**: another service has the
   port. Pick a different one and reconfigure.
 - **Entities stay unavailable**: the hub has reached you but its samples

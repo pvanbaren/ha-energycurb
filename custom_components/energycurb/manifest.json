@@ -1,6 +1,6 @@
 {
   "domain": "energycurb",
-  "name": "EnergyCurb",
+  "name": "Curb",
   "codeowners": [],
   "config_flow": true,
   "documentation": "https://github.com/pvanbaren/ha-energycurb",

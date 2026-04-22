@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="EnergyCurb">
-  <title>EnergyCurb</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Curb">
+  <title>Curb</title>
   <rect width="256" height="256" rx="48" fill="#0e7490"/>
   <path d="M 180 76 A 74 74 0 1 0 180 180" fill="none" stroke="#ffffff" stroke-width="24" stroke-linecap="round"/>
   <path d="M 118 58 L 69 142 L 118 142 L 104 198 L 181 114 L 132 114 Z" fill="#facc15"/>

@@ -23,7 +23,7 @@ from .const import (
     SIGNAL_UPDATE_FMT,
 )
 from .hub_config import _default_circuit_name
-from .http_server import EnergyCurbHttpServer
+from .http_server import CurbHttpServer
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    server: EnergyCurbHttpServer = hass.data[DOMAIN][entry.entry_id]
+    server: CurbHttpServer = hass.data[DOMAIN][entry.entry_id]
 
     @callback
     def _add_device(serial: str) -> None:
@@ -57,7 +57,7 @@ class _CurbCircuitBase(SensorEntity):
 
     def __init__(
         self,
-        server: EnergyCurbHttpServer,
+        server: CurbHttpServer,
         serial: str,
         circuit_idx: int,
     ) -> None:
@@ -94,7 +94,7 @@ class CurbCircuitPowerSensor(_CurbCircuitBase):
 
     def __init__(
         self,
-        server: EnergyCurbHttpServer,
+        server: CurbHttpServer,
         serial: str,
         circuit_idx: int,
     ) -> None:
@@ -121,7 +121,7 @@ class CurbCircuitEnergySensor(_CurbCircuitBase):
 
     def __init__(
         self,
-        server: EnergyCurbHttpServer,
+        server: CurbHttpServer,
         serial: str,
         circuit_idx: int,
     ) -> None:

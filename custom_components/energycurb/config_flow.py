@@ -1,4 +1,4 @@
-"""Config flow for EnergyCurb."""
+"""Config flow for Curb."""
 from __future__ import annotations
 
 import copy
@@ -46,7 +46,7 @@ from .http_server import enqueue_hub_message
 from .hub_config import _default_circuit_name, default_circuits
 
 
-class EnergyCurbConfigFlow(ConfigFlow, domain=DOMAIN):
+class CurbConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     async def async_step_user(
@@ -60,7 +60,7 @@ class EnergyCurbConfigFlow(ConfigFlow, domain=DOMAIN):
             self._abort_if_unique_id_configured()
 
             return self.async_create_entry(
-                title=f"EnergyCurb :{port}",
+                title=f"Curb :{port}",
                 data={CONF_HOST: host, CONF_PORT: port},
             )
 
@@ -84,7 +84,7 @@ class EnergyCurbConfigFlow(ConfigFlow, domain=DOMAIN):
     @staticmethod
     @callback
     def async_get_options_flow(entry: ConfigEntry) -> OptionsFlow:
-        return EnergyCurbOptionsFlow(entry)
+        return CurbOptionsFlow(entry)
 
 
 def _section_key(circuit_idx: int) -> str:
@@ -123,7 +123,7 @@ def _polarity_selector() -> SelectSelector:
     )
 
 
-class EnergyCurbOptionsFlow(OptionsFlow):
+class CurbOptionsFlow(OptionsFlow):
     """Configure the 18 circuits of a specific discovered hub."""
 
     def __init__(self, entry: ConfigEntry) -> None:
