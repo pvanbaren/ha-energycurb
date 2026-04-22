@@ -128,7 +128,14 @@ class EnergyCurbHttpServer:
 
     async def _handle_hub_config(self, request: web.Request) -> web.Response:
         serial = request.match_info["serial"]
-        body = build_hub_config(serial, self.circuits_for(serial))
+        # request.host carries the Host header verbatim (hostname plus
+        # port if the hub used a non-default one), so echoing it back
+        # produces endpoints that are guaranteed to be reachable — even
+        # through a reverse proxy or iptables redirect.
+        base_url = f"{request.scheme}://{request.host}"
+        body = build_hub_config(
+            serial, self.circuits_for(serial), base_url=base_url
+        )
         return web.Response(
             status=200,
             content_type="application/json",

@@ -99,10 +99,32 @@ def _build_channel(circuit: dict[str, Any]) -> dict[str, Any] | str:
     }
 
 
+def _endpoints_for(base_url: str | None) -> dict[str, str]:
+    """Endpoint URLs the hub will use after loading this config.
+
+    `base_url` should be `<scheme>://<host>[:port]` — pass the origin the
+    hub itself used to GET /v3/hub_config, so every subsequent POST from
+    the hub lands back on this same integration listener. Falling back to
+    the upstream Curb URLs is only useful for offline testing; on a live
+    deploy the Curb cloud is dead and a hub that actually tries those
+    will just stop talking to anything.
+    """
+    if not base_url:
+        return dict(DEFAULT_ENDPOINTS)
+    base_url = base_url.rstrip("/")
+    return {
+        "hub_config":  f"{base_url}/v3/hub_config",
+        "messages":    f"{base_url}/v3/messages",
+        "samples":     f"{base_url}/v3/samples",
+        "diagnostics": f"{base_url}/v3/diagnostics",
+    }
+
+
 def build_hub_config(
     serial: str,
     circuits: list[dict[str, Any]],
     *,
+    base_url: str | None = None,
     revision: int | None = None,
 ) -> dict[str, Any]:
     """Return the v3.1 hub-config.json body for one hub."""
@@ -134,7 +156,7 @@ def build_hub_config(
         "location_id": location_id,
         "organization": "curb",
         "revision": int(time.time()) if revision is None else revision,
-        "endpoints": dict(DEFAULT_ENDPOINTS),
+        "endpoints": _endpoints_for(base_url),
         "sampling": {"sample_period_ms": 1000, "samples_per_post": 1},
         "load_control": {
             "is_enabled": False,
