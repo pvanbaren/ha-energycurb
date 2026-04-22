@@ -7,10 +7,10 @@ and surface it as native Home Assistant sensors — no MQTT, no polling.
 
 Curb Inc. shut down its cloud in February 2026, bricking every hub in the
 field. After restoring root access (see
-[curbed](https://github.com/codearranger/curbed) or similar projects) and
-redirecting `border.prod.energycurb.com` to your own server, the hub happily
-POSTs its samples to whatever answers at that name. This integration is what
-answers.
+[curbed](https://github.com/codearranger/curbed)) and pointing the hub's
+on-device `/data/hub-config.json` at your Home Assistant host, the hub
+happily POSTs its samples to whatever answers there. This integration is
+what answers.
 
 ## What it does
 
@@ -35,32 +35,31 @@ few seconds), not polled.
 
 ## Pointing your hub at this integration
 
-The Curb hub is hard-coded to POST samples to
-`https://border.prod.energycurb.com/v3/samples/<serial>` (falling back to
-plain HTTP). You have to redirect that hostname locally:
+1. Gain root access to the hub using
+   [codearranger/curbed](https://github.com/codearranger/curbed). That
+   project walks through unlocking the hub and getting a shell on it.
+2. On the hub, edit `/data/hub-config.json` and change every URL under
+   the `endpoints` block so the host and port match your Home Assistant
+   listener. For a default install that's `http://<ha-host>:8989`:
+   ```json
+   "endpoints": {
+       "hub_config":  "http://<ha-host>:8989/v3/hub_config",
+       "messages":    "http://<ha-host>:8989/v3/messages",
+       "samples":     "http://<ha-host>:8989/v3/samples",
+       "diagnostics": "http://<ha-host>:8989/v3/diagnostics"
+   },
+   ```
+   Replace `<ha-host>` with your HA server's IP or hostname and `8989`
+   with the port you picked in the integration setup. Bump the
+   `revision` field by one so the streamer re-reads the file on its
+   next poll, then restart the hub (or just the `streamer` service).
 
-- **Pi-hole / dnsmasq / your router DNS**:
-  `border.prod.energycurb.com` → the IP of your Home Assistant host.
-- The hub accepts any TLS certificate (`wget --no-check-certificate`), but
-  if nothing is listening on :443 it transparently falls back to plain
-  HTTP on :80, which this integration can handle directly.
-
-### Dealing with privileged ports (80 / 443)
-
-Home Assistant normally can't bind to ports below 1024. Two options:
-
-- **Pick a high port** (default `8989`) and DNAT the real ports to it:
-  ```
-  iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 8989
-  ```
-- **Reverse-proxy** `:80` (and optionally `:443`) through nginx/caddy/traefik
-  to `http://<ha-host>:8989`.
-
-The hub also pulls firmware-update manifests from
-`updates.energycurb.com/api/firmware/...`. This integration does **not**
-answer those — use [curbed](https://github.com/codearranger/curbed)'s
-`serve.py` (or a merged server like `samples-to-mqtt.py` in the sibling
-repo) for that one-shot unlock.
+From then on the hub posts samples directly to this integration and
+fetches its own future configs from `/v3/hub_config/<serial>` — which
+this integration (re)generates on demand from the per-circuit settings
+in the options flow, overwriting what you just hand-edited. Your edits
+to the `endpoints` block are preserved on each regeneration because the
+integration echoes back whatever host:port the hub used to reach it.
 
 ## How devices appear
 
@@ -95,15 +94,14 @@ circuit:
 These values are compiled into a v3.1 `hub-config.json` and served at
 `GET /v3/hub_config/<serial>`, so point your hub's config endpoint at this
 integration (alongside the samples endpoint) and it will pull the config
-on boot. The format mirrors the file that
-[`configure_device.py`](https://github.com/codearranger/curbed) generates.
+on boot.
 
 ## Troubleshooting
 
-- **Nothing shows up**: check that `border.prod.energycurb.com` actually
-  resolves to your HA host from the hub's network (`nslookup` on a
-  device on the hub's subnet). Check HA logs for `EnergyCurb listening
-  on …`.
+- **Nothing shows up**: confirm the hub's `/data/hub-config.json` has
+  your HA host:port in every `endpoints.*` URL, and check the hub's
+  `/data/streamer.log` for POST responses. Check HA logs for
+  `EnergyCurb listening on …`.
 - **`Failed to bind … Address already in use`**: another service has the
   port. Pick a different one and reconfigure.
 - **Entities stay unavailable**: the hub has reached you but its samples
