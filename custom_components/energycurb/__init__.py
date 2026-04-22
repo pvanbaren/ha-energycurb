@@ -28,6 +28,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = server
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    entry.async_on_unload(entry.add_update_listener(_async_options_updated))
     return True
 
 
@@ -39,3 +40,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if server is not None:
         await server.async_stop()
     return unload_ok
+
+
+async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    # Options carry per-circuit names and clamp config; reloading is the
+    # simplest way to rebuild sensor names and pick up the new hub-config.
+    await hass.config_entries.async_reload(entry.entry_id)

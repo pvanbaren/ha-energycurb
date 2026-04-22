@@ -15,7 +15,14 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, NUM_CIRCUITS, SIGNAL_NEW_DEVICE, SIGNAL_UPDATE_FMT
+from .const import (
+    CONF_CIRCUIT_NAME,
+    DOMAIN,
+    NUM_CIRCUITS,
+    SIGNAL_NEW_DEVICE,
+    SIGNAL_UPDATE_FMT,
+)
+from .hub_config import _default_circuit_name
 from .http_server import EnergyCurbHttpServer
 
 _LOGGER = logging.getLogger(__name__)
@@ -60,7 +67,11 @@ class CurbCircuitSensor(SensorEntity):
         self._serial = serial
         self._idx = circuit_idx
         self._attr_unique_id = f"curb_{serial}_circuit_{circuit_idx + 1}"
-        self._attr_name = f"Circuit {circuit_idx + 1}"
+        circuits = server.circuits_for(serial)
+        self._attr_name = (
+            circuits[circuit_idx].get(CONF_CIRCUIT_NAME)
+            or _default_circuit_name(circuit_idx)
+        )
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, serial)},
             name=f"Curb {serial}",
