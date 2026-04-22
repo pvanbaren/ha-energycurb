@@ -3,9 +3,9 @@
   "name": "EnergyCurb",
   "codeowners": [],
   "config_flow": true,
-  "documentation": "https://github.com/YOUR_USER/ha-energycurb",
+  "documentation": "https://github.com/pvanbaren/ha-energycurb",
   "iot_class": "local_push",
-  "issue_tracker": "https://github.com/YOUR_USER/ha-energycurb/issues",
+  "issue_tracker": "https://github.com/pvanbaren/ha-energycurb/issues",
   "requirements": ["msgpack>=1.0.0"],
   "version": "0.1.0"
 }

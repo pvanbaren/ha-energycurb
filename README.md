@@ -28,7 +28,7 @@ few seconds), not polled.
 ## Installation (HACS)
 
 1. In HACS → Integrations → ⋯ → **Custom repositories**, add
-   `https://github.com/YOUR_USER/ha-energycurb` with category **Integration**.
+   `https://github.com/pvanbaren/ha-energycurb` with category **Integration**.
 2. Install **EnergyCurb** and restart Home Assistant.
 3. Settings → Devices & services → **Add integration** → **EnergyCurb**.
 4. Enter the bind host (`0.0.0.0` is fine) and port.
