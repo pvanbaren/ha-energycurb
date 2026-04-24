@@ -17,9 +17,13 @@ what answers.
 - Binds an HTTP listener on a user-configurable host/port.
 - Accepts `POST /v3/samples/<serial>` from any number of Curb hubs.
 - Decodes the `deflate` + MessagePack body.
-- Creates 18 native `sensor.*` entities (one per circuit) per hub, with
-  `device_class: power`, `state_class: measurement`, unit `W`. These feed the
-  HA Energy dashboard and long-term statistics out of the box.
+- Creates 36 native `sensor.*` entities per hub — two per circuit:
+  - **Power** (`device_class: power`, `state_class: measurement`, unit `W`)
+    — instantaneous draw, derived as `|w| × 3600`.
+  - **Energy** (`device_class: energy`, `state_class: total_increasing`,
+    unit `kWh`) — cumulative accumulation of `|w|`, persisted across
+    restarts so long-term statistics and the Energy dashboard work out
+    of the box.
 - Each hub appears as its own HA **device** identified by its serial.
 
 `iot_class` is `local_push` — data arrives on every hub sample (~every
@@ -101,15 +105,23 @@ clamp/voltage mapping from the HA options flow.
 On the first POST from a serial, the integration:
 
 1. Registers an HA device `Curb <serial>` (manufacturer: Curb).
-2. Attaches 18 sensors:
+2. Attaches 36 sensors — one power + one energy per circuit. With
+   default circuit names `A1`…`C6`, entity IDs come out as:
    ```
-   sensor.circuit_1 … sensor.circuit_18
+   sensor.curb_<serial>_a1          sensor.curb_<serial>_a1_energy
+   sensor.curb_<serial>_a2          sensor.curb_<serial>_a2_energy
+   …                                 …
+   sensor.curb_<serial>_c6          sensor.curb_<serial>_c6_energy
    ```
-   with `unique_id = curb_<serial>_circuit_N`, so renames and dashboard
-   placements survive reloads and restarts.
+   `unique_id`s are `curb_<serial>_circuit_N` for power sensors and
+   `curb_<serial>_circuit_N_energy` for energy sensors (1-indexed), so
+   renames and dashboard placements survive reloads and restarts even
+   if you change the circuit's friendly name in Configure.
 
-After a restart, sensors show `unavailable` until the hub's next POST
-(usually seconds later). Long-term statistics are preserved.
+After a reload the power sensors show `unavailable` until the hub's
+next POST; the energy sensors come back immediately with their last
+persisted total. Long-term statistics are preserved through restarts
+and reloads.
 
 ## Circuit configuration
 
