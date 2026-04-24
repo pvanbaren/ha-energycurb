@@ -5,7 +5,7 @@
 Receive live energy data directly from orphaned **Curb Energy Monitor** hubs
 and surface it as native Home Assistant sensors — no MQTT, no polling.
 
-Curb Inc. shut down its cloud in February 2026, bricking every hub in the
+Curb Inc. shut down its cloud in February 2026, orphaning every hub in the
 field. After restoring root access (see
 [curbed](https://github.com/codearranger/curbed)) and pointing the hub's
 on-device `/data/hub-config.json` at your Home Assistant host, the hub
@@ -17,13 +17,17 @@ what answers.
 - Binds an HTTP listener on a user-configurable host/port.
 - Accepts `POST /v3/samples/<serial>` from any number of Curb hubs.
 - Decodes the `deflate` + MessagePack body.
-- Creates 36 native `sensor.*` entities per hub — two per circuit:
+- Creates 36 native `sensor.*` entities per hub (or 54 if every
+  circuit is marked bi-directional) — two or three per circuit:
   - **Power** (`device_class: power`, `state_class: measurement`, unit `W`)
     — instantaneous draw, derived as `|w| × 3600`.
   - **Energy** (`device_class: energy`, `state_class: total_increasing`,
-    unit `kWh`) — cumulative accumulation of `|w|`, persisted across
-    restarts so long-term statistics and the Energy dashboard work out
-    of the box.
+    unit `kWh`) — cumulative consumption. For non-bidirectional circuits
+    it's `Σ |w|`; for bi-directional circuits it's `Σ max(w, 0)` so the
+    counter stays monotonic. Persisted across restarts so long-term
+    statistics and the Energy dashboard work out of the box.
+  - **Energy Production** (same device/state class, only created for
+    bi-directional circuits) — cumulative `Σ max(-w, 0)`, i.e. back-feed.
 - Each hub appears as its own HA **device** identified by its serial.
 
 `iot_class` is `local_push` — data arrives on every hub sample (~every
@@ -45,11 +49,14 @@ few seconds), not polled.
 2. **Back up `/data/hub-config.json` before you touch it** (e.g.
    `cp /data/hub-config.json /data/hub-config.json.orig` and pull a
    copy off the hub). The integration regenerates this file on the
-   next config fetch and overwrites your per-channel calibration;
-   the backup is the only record of which physical clamp and voltage
-   is wired to each of the 18 positions, which you'll need to
-   re-enter in the integration's options flow (clamp_definition_id
-   and the 2× multiplier on 220V channels).
+   next config fetch and overwrites the per-channel calibration. The
+   backup is the only record of which physical clamp and voltage is
+   wired to each of the 18 positions, which you'll need to re-enter
+   in the integration's options flow — read each channel's
+   `clamp_definition_id` to pick the clamp, and compare its
+   `i_multiplier` to the canonical 110 V value for that clamp to
+   decide the voltage (a ~2× magnitude means 220 V) and polarity
+   (negative means the clamp is inverted).
 3. On the hub, edit `/data/hub-config.json` and change every URL under
    the `endpoints` block so the host and port match your Home Assistant
    listener. For a default install that's `http://<ha-host>:8989`:
@@ -66,10 +73,12 @@ few seconds), not polled.
    `revision` field by one so the streamer re-reads the file on its
    next poll, then restart the hub (or just the `streamer` service).
 4. Open the integration's options flow (Settings → Devices & services
-   → Curb → Configure) and, using your backup of the original
-   `hub-config.json`, set the clamp (100A / 50A / 30A), voltage
-   (110V / 220V) and inverted flag for each of the 18 positions to
-   match the `clamp_definition_id` and multiplier values in the backup.
+   → Curb → Configure). Enter the hub's sample period (1–60 seconds;
+   default 1), then for each of the 18 positions set the clamp
+   (100A / 50A / 30A), voltage (110V / 220V), inverted flag, and the
+   bi-directional flag using your backup of the original
+   `hub-config.json` as reference — match the `clamp_definition_id`
+   and the sign/magnitude of the multipliers.
 
 From then on the hub posts samples directly to this integration and
 fetches its own future configs from `/v3/hub_config/<serial>` — which
@@ -105,18 +114,27 @@ clamp/voltage mapping from the HA options flow.
 On the first POST from a serial, the integration:
 
 1. Registers an HA device `Curb <serial>` (manufacturer: Curb).
-2. Attaches 36 sensors — one power + one energy per circuit. With
-   default circuit names `A1`…`C6`, entity IDs come out as:
+2. Attaches 36 sensors — one power + one energy per circuit, plus one
+   extra "Energy Production" sensor for any circuit flagged
+   bi-directional. With default circuit names `A1`…`C6`, entity IDs
+   come out as:
    ```
-   sensor.curb_<serial>_a1          sensor.curb_<serial>_a1_energy
-   sensor.curb_<serial>_a2          sensor.curb_<serial>_a2_energy
-   …                                 …
-   sensor.curb_<serial>_c6          sensor.curb_<serial>_c6_energy
+   sensor.curb_<serial>_a1              sensor.curb_<serial>_a1_energy
+   sensor.curb_<serial>_a2              sensor.curb_<serial>_a2_energy
+   …                                     …
+   sensor.curb_<serial>_c6              sensor.curb_<serial>_c6_energy
    ```
-   `unique_id`s are `curb_<serial>_circuit_N` for power sensors and
-   `curb_<serial>_circuit_N_energy` for energy sensors (1-indexed), so
-   renames and dashboard placements survive reloads and restarts even
-   if you change the circuit's friendly name in Configure.
+   And for each bi-directional circuit (e.g. the mains backfed by
+   solar):
+   ```
+   sensor.curb_<serial>_a1_energy_production
+   ```
+   `unique_id`s are `curb_<serial>_circuit_N` for power sensors,
+   `curb_<serial>_circuit_N_energy` for consumption energy, and
+   `curb_<serial>_circuit_N_energy_production` for production energy
+   (all 1-indexed). Renames and dashboard placements survive reloads
+   and restarts even if you change the circuit's friendly name in
+   Configure.
 
 After a reload the power sensors show `unavailable` until the hub's
 next POST; the energy sensors come back immediately with their last
@@ -126,22 +144,36 @@ and reloads.
 ## Circuit configuration
 
 Each hub exposes 18 circuits in a fixed physical order (groups of 6, 6, 3, 3).
-From **Settings → Devices & services → Curb → Configure**, assign per
-circuit:
+From **Settings → Devices & services → Curb → Configure**, a single form
+holds one per-hub field at the top followed by one section per circuit:
+
+**Per hub**
+
+- **Sample period (seconds)** — integer, 1–60, default 1. Written into
+  the generated hub-config.json as `sampling.sample_period_ms`
+  (`period × 1000`). Larger values reduce POST frequency and log
+  volume at the cost of time resolution.
+
+**Per circuit** (A1 … C6)
 
 - **Name** — shown as the sensor's friendly name in HA. Defaults run
   A1–A6, B1–B6, C1–C6.
 - **Current clamp** — `100A`, `50A`, or `30A` (Xiamen CT).
-- **Voltage** — `110V` or `220V`. 220 V circuits get a 2× scale on
-  `w_multiplier` / `var_multiplier` to compensate for the group's
-  line-to-neutral voltage reference.
+- **Voltage** — `110V` or `220V`. Each voltage has its own production
+  multiplier lookup; 220 V entries are copied verbatim from Curb's
+  reference hub-config.json so the generated file matches byte-for-byte.
 - **Inverted** — leave unchecked for a correctly-oriented clamp; check
-  it to flip the sign of the channel's multipliers.
+  it to flip the sign of the channel's `i/w/var` multipliers.
+- **Bi-directional** — check for circuits that can both import and
+  export (e.g. a solar-backfed main). When set, the circuit gets a
+  second "Energy Production" sensor and the "Energy" sensor only
+  accumulates the positive side.
 
 These values are compiled into a v3.1 `hub-config.json` and served at
-`GET /v3/hub_config/<serial>`, so point your hub's config endpoint at this
-integration (alongside the samples endpoint) and it will pull the config
-on boot.
+`GET /v3/hub_config/<serial>`. The hub picks up changes on its next
+5-second message poll (the integration queues a `{"type":"config"}`
+hub message whenever you save, so there's no 5-minute wait for the
+periodic refresh).
 
 ## Troubleshooting
 
