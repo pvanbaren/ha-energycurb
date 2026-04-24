@@ -26,6 +26,9 @@
       "circuits": {
         "title": "Circuit configuration — {serial}",
         "description": "Each group below is one physical circuit position (A1–C6). Assign a name, current clamp, voltage, and whether the clamp is inverted. The hub-config.json served at /v3/hub_config/{serial} is generated from these values.",
+        "data": {
+          "sample_period_s": "Sample period (seconds)"
+        },
         "sections": {
           "c1":  {"name": "A1", "data": {"name": "Name", "clamp": "Clamp", "voltage": "Voltage", "inverted": "Inverted", "bidirectional": "Bi-directional"}},
           "c2":  {"name": "A2", "data": {"name": "Name", "clamp": "Clamp", "voltage": "Voltage", "inverted": "Inverted", "bidirectional": "Bi-directional"}},
