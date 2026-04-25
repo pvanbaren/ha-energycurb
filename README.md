@@ -43,6 +43,16 @@ few seconds), not polled.
 
 ## Pointing your hub at this integration
 
+> **Automated alternative:** the companion
+> [`ha-curb-update-server`](https://github.com/pvanbaren/ha-curb-update-server)
+> integration impersonates Curb's firmware update endpoint (point
+> `updates.energycurb.com` at your HA host via your DNS server) and
+> serves a payload that both roots the hub and rewrites its endpoints
+> to `homeassistant.local:8989` on the next hourly update check. With
+> that in place you can skip steps 1–3 below — no shell on the hub, no
+> hand-editing `/data/hub-config.json` — and jump straight to step 4 to
+> map the 18 circuits in the options flow.
+
 1. Gain root access to the hub using
    [codearranger/curbed](https://github.com/codearranger/curbed). That
    project walks through unlocking the hub and getting a shell on it.
@@ -128,12 +138,14 @@ On the first POST from a serial, the integration:
    ```
    sensor.curb_<serial>_a1_energy_production
    ```
-   `unique_id`s are `curb_<serial>_circuit_N` for power sensors,
+   The `entity_id` is HA's slug of the friendly name (so `A1` →
+   `sensor.curb_<serial>_a1`), but the underlying `unique_id` uses the
+   fixed 1-indexed circuit position so it stays stable across renames:
+   `curb_<serial>_circuit_N` for power sensors,
    `curb_<serial>_circuit_N_energy` for consumption energy, and
-   `curb_<serial>_circuit_N_energy_production` for production energy
-   (all 1-indexed). Renames and dashboard placements survive reloads
-   and restarts even if you change the circuit's friendly name in
-   Configure.
+   `curb_<serial>_circuit_N_energy_production` for production energy.
+   Renames and dashboard placements survive reloads and restarts even
+   if you change the circuit's friendly name in Configure.
 
 After a reload the power sensors show `unavailable` until the hub's
 next POST; the energy sensors come back immediately with their last
