@@ -73,8 +73,7 @@ few seconds), not polled.
    `revision` field by one so the streamer re-reads the file on its
    next poll, then restart the hub (or just the `streamer` service).
 4. Open the integration's options flow (Settings → Devices & services
-   → Curb → Configure). Enter the hub's sample period (1–60 seconds;
-   default 1), then for each of the 18 positions set the clamp
+   → Curb → Configure). For each of the 18 positions set the clamp
    (100A / 50A / 30A), voltage (110V / 220V), inverted flag, and the
    bi-directional flag using your backup of the original
    `hub-config.json` as reference — match the `clamp_definition_id`
@@ -145,16 +144,7 @@ and reloads.
 
 Each hub exposes 18 circuits in a fixed physical order (groups of 6, 6, 3, 3).
 From **Settings → Devices & services → Curb → Configure**, a single form
-holds one per-hub field at the top followed by one section per circuit:
-
-**Per hub**
-
-- **Sample period (seconds)** — integer, 1–60, default 1. Written into
-  the generated hub-config.json as `sampling.sample_period_ms`
-  (`period × 1000`). Larger values reduce POST frequency and log
-  volume at the cost of time resolution.
-
-**Per circuit** (A1 … C6)
+holds one section per circuit (A1 … C6):
 
 - **Name** — shown as the sensor's friendly name in HA. Defaults run
   A1–A6, B1–B6, C1–C6.
