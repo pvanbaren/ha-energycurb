@@ -18,8 +18,6 @@ from .const import (
     CONF_CIRCUITS,
     CONF_CIRCUIT_BIDIRECTIONAL,
     CONF_DEVICES,
-    CONF_SAMPLE_PERIOD_S,
-    DEFAULT_SAMPLE_PERIOD_S,
     DOMAIN,
     NUM_CIRCUITS,
     SIGNAL_NEW_DEVICE,
@@ -177,17 +175,6 @@ class CurbHttpServer:
             return cfg
         return default_circuits()
 
-    def sample_period_for(self, serial: str) -> int:
-        """Return the configured sample period (whole seconds, ≥ 1)."""
-        devices = self.entry.options.get(CONF_DEVICES, {})
-        val = devices.get(serial, {}).get(CONF_SAMPLE_PERIOD_S)
-        if val is None:
-            return DEFAULT_SAMPLE_PERIOD_S
-        try:
-            return max(1, int(round(float(val))))
-        except (TypeError, ValueError):
-            return DEFAULT_SAMPLE_PERIOD_S
-
     async def _handle_samples(self, request: web.Request) -> web.Response:
         serial = request.match_info["serial"]
         data = await request.read()
@@ -236,10 +223,7 @@ class CurbHttpServer:
         # through a reverse proxy or iptables redirect.
         base_url = f"{request.scheme}://{request.host}"
         body = build_hub_config(
-            serial,
-            self.circuits_for(serial),
-            base_url=base_url,
-            sample_period_s=self.sample_period_for(serial),
+            serial, self.circuits_for(serial), base_url=base_url
         )
         return web.Response(
             status=200,

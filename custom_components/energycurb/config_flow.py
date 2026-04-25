@@ -35,11 +35,9 @@ from .const import (
     CONF_DEVICES,
     CONF_HOST,
     CONF_PORT,
-    CONF_SAMPLE_PERIOD_S,
     CONF_SERIAL,
     DEFAULT_HOST,
     DEFAULT_PORT,
-    DEFAULT_SAMPLE_PERIOD_S,
     DOMAIN,
     NUM_CIRCUITS,
     VOLTAGE_CHOICES,
@@ -166,35 +164,8 @@ class CurbOptionsFlow(OptionsFlow):
             return existing
         return default_circuits()
 
-    def _current_sample_period(self) -> int:
-        assert self._serial is not None
-        devices = self._entry.options.get(CONF_DEVICES, {})
-        val = devices.get(self._serial, {}).get(CONF_SAMPLE_PERIOD_S)
-        if val is None:
-            return DEFAULT_SAMPLE_PERIOD_S
-        try:
-            return max(1, int(round(float(val))))
-        except (TypeError, ValueError):
-            return DEFAULT_SAMPLE_PERIOD_S
-
-    def _circuits_schema(
-        self,
-        sample_period_s: int,
-        defaults: list[dict[str, Any]],
-    ) -> vol.Schema:
-        fields: dict[Any, Any] = {
-            vol.Required(
-                CONF_SAMPLE_PERIOD_S, default=sample_period_s
-            ): NumberSelector(
-                NumberSelectorConfig(
-                    min=1,
-                    max=60,
-                    step=1,
-                    mode=NumberSelectorMode.BOX,
-                    unit_of_measurement="s",
-                )
-            ),
-        }
+    def _circuits_schema(self, defaults: list[dict[str, Any]]) -> vol.Schema:
+        fields: dict[Any, Any] = {}
         for i, ch in enumerate(defaults):
             sub = vol.Schema(
                 {
@@ -242,12 +213,7 @@ class CurbOptionsFlow(OptionsFlow):
 
             new_options = copy.deepcopy(dict(self._entry.options))
             devices = new_options.setdefault(CONF_DEVICES, {})
-            devices[self._serial] = {
-                CONF_CIRCUITS: circuits,
-                CONF_SAMPLE_PERIOD_S: max(
-                    1, int(round(float(user_input[CONF_SAMPLE_PERIOD_S])))
-                ),
-            }
+            devices[self._serial] = {CONF_CIRCUITS: circuits}
 
             # Tell the hub to fetch the new hub-config.json on its next
             # 5-second message poll, instead of waiting up to 5 minutes
@@ -263,9 +229,6 @@ class CurbOptionsFlow(OptionsFlow):
 
         return self.async_show_form(
             step_id="circuits",
-            data_schema=self._circuits_schema(
-                self._current_sample_period(),
-                self._current_circuits(),
-            ),
+            data_schema=self._circuits_schema(self._current_circuits()),
             description_placeholders={"serial": self._serial},
         )
