@@ -20,7 +20,8 @@ what answers.
 - Creates 36 native `sensor.*` entities per hub (or 54 if every
   circuit is marked bi-directional) — two or three per circuit:
   - **Power** (`device_class: power`, `state_class: measurement`, unit `W`)
-    — instantaneous draw, derived as `|w| × 3600`.
+    — instantaneous draw, derived as `|w| × 3600 / T`, where `T` is the
+    configured sample period in seconds (default 1).
   - **Energy** (`device_class: energy`, `state_class: total_increasing`,
     unit `kWh`) — cumulative consumption. For non-bidirectional circuits
     it's `Σ |w|`; for bi-directional circuits it's `Σ max(w, 0)` so the
@@ -83,7 +84,8 @@ few seconds), not polled.
    `revision` field by one so the streamer re-reads the file on its
    next poll, then restart the hub (or just the `streamer` service).
 4. Open the integration's options flow (Settings → Devices & services
-   → Curb → Configure). For each of the 18 positions set the clamp
+   → Curb → Configure). Enter the hub's sample period (1–60 seconds;
+   default 1), then for each of the 18 positions set the clamp
    (100A / 50A / 30A), voltage (110V / 220V), inverted flag, and the
    bi-directional flag using your backup of the original
    `hub-config.json` as reference — match the `clamp_definition_id`
@@ -156,7 +158,16 @@ and reloads.
 
 Each hub exposes 18 circuits in a fixed physical order (groups of 6, 6, 3, 3).
 From **Settings → Devices & services → Curb → Configure**, a single form
-holds one section per circuit (A1 … C6):
+holds one per-hub field at the top followed by one section per circuit:
+
+**Per hub**
+
+- **Sample period (seconds)** — integer, 1–60, default 1. Written into
+  the generated hub-config.json as `sampling.sample_period_ms`
+  (`period × 1000`). Larger values reduce POST frequency and log
+  volume at the cost of time resolution.
+
+**Per circuit** (A1 … C6)
 
 - **Name** — shown as the sensor's friendly name in HA. Defaults run
   A1–A6, B1–B6, C1–C6.

@@ -24,6 +24,7 @@ from .const import (
     CONF_CIRCUIT_INVERTED,
     CONF_CIRCUIT_NAME,
     CONF_CIRCUIT_VOLTAGE,
+    DEFAULT_SAMPLE_PERIOD_S,
     NUM_CIRCUITS,
     VOLTAGE_110,
     VOLTAGE_220,
@@ -127,8 +128,15 @@ def build_hub_config(
     *,
     base_url: str | None = None,
     revision: int | None = None,
+    sample_period_s: int = DEFAULT_SAMPLE_PERIOD_S,
 ) -> dict[str, Any]:
-    """Return the v3.1 hub-config.json body for one hub."""
+    """Return the v3.1 hub-config.json body for one hub.
+
+    `sample_period_s` is the streamer's sample interval in whole
+    seconds (minimum 1); it's serialized as `sampling.sample_period_ms =
+    sample_period_s * 1000`. Non-integer or sub-1s values get rounded
+    and clamped so the config is always well-formed.
+    """
     if len(circuits) != NUM_CIRCUITS:
         raise ValueError(
             f"expected {NUM_CIRCUITS} circuits, got {len(circuits)}"
@@ -158,7 +166,10 @@ def build_hub_config(
         "organization": "curb",
         "revision": int(time.time()) if revision is None else revision,
         "endpoints": _endpoints_for(base_url),
-        "sampling": {"sample_period_ms": 1000, "samples_per_post": 1},
+        "sampling": {
+            "sample_period_ms": max(1, int(round(sample_period_s))) * 1000,
+            "samples_per_post": 1,
+        },
         "sensors": {"groups": groups_out},
     }
 

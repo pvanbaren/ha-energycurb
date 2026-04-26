@@ -18,6 +18,8 @@ from .const import (
     CONF_CIRCUITS,
     CONF_CIRCUIT_BIDIRECTIONAL,
     CONF_DEVICES,
+    CONF_SAMPLE_PERIOD_S,
+    DEFAULT_SAMPLE_PERIOD_S,
     DOMAIN,
     NUM_CIRCUITS,
     SIGNAL_NEW_DEVICE,
@@ -175,6 +177,17 @@ class CurbHttpServer:
             return cfg
         return default_circuits()
 
+    def sample_period_for(self, serial: str) -> int:
+        """Return the configured sample period (whole seconds, ≥ 1)."""
+        devices = self.entry.options.get(CONF_DEVICES, {})
+        val = devices.get(serial, {}).get(CONF_SAMPLE_PERIOD_S)
+        if val is None:
+            return DEFAULT_SAMPLE_PERIOD_S
+        try:
+            return max(1, int(round(float(val))))
+        except (TypeError, ValueError):
+            return DEFAULT_SAMPLE_PERIOD_S
+
     async def _handle_samples(self, request: web.Request) -> web.Response:
         serial = request.match_info["serial"]
         data = await request.read()
@@ -223,7 +236,10 @@ class CurbHttpServer:
         # through a reverse proxy or iptables redirect.
         base_url = f"{request.scheme}://{request.host}"
         body = build_hub_config(
-            serial, self.circuits_for(serial), base_url=base_url
+            serial,
+            self.circuits_for(serial),
+            base_url=base_url,
+            sample_period_s=self.sample_period_for(serial),
         )
         return web.Response(
             status=200,
@@ -283,11 +299,13 @@ class CurbHttpServer:
             return
 
         circuits = self.circuits_for(serial)
+        period_s = self.sample_period_for(serial)
         power_store = self.latest.setdefault(serial, {})
         energy_store = self.energy_wh.setdefault(serial, {})
         production_store = self.energy_wh_production.setdefault(serial, {})
         for i, wh in enumerate(sample_wh):
-            power_store[i] = wh * WH_PER_SEC_TO_W
+            # Wh / period_s = Wh per second → ×3600 = W.
+            power_store[i] = wh / period_s * WH_PER_SEC_TO_W
             if circuits[i].get(CONF_CIRCUIT_BIDIRECTIONAL):
                 if wh > 0:
                     energy_store[i] = energy_store.get(i, 0.0) + wh
