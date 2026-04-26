@@ -145,6 +145,10 @@ class CurbHttpServer:
         app.router.add_get("/v3/hub_config/{serial}", self._handle_hub_config)
         app.router.add_get("/v3/messages/{serial}", self._handle_messages)
         app.router.add_post("/v3/messages/{serial}", self._handle_messages_post)
+        app.router.add_route("*", "/v3/diagnostics", self._handle_diagnostics)
+        app.router.add_route(
+            "*", "/v3/diagnostics/{serial}", self._handle_diagnostics
+        )
         self._runner = web.AppRunner(app, access_log=None)
         await self._runner.setup()
         self._site = web.TCPSite(self._runner, host=self.host, port=self.port)
@@ -279,6 +283,16 @@ class CurbHttpServer:
         # consume them yet — just acknowledge with 201 so the hub
         # doesn't log the post as failed.
         return web.Response(status=201)
+
+    async def _handle_diagnostics(self, request: web.Request) -> web.Response:
+        # Stub: any method/path on /v3/diagnostics gets the same 200 +
+        # `{"messages":0}` body the samples endpoint returns, so the
+        # hub's diagnostics POSTs don't show up as failed in streamer.log.
+        return web.Response(
+            status=200,
+            content_type="application/json",
+            text='{"messages":0}',
+        )
 
     def _apply_sample(self, serial: str, sample: dict[str, Any]) -> None:
         # Hub reports `w` per channel as signed Wh over the sample
