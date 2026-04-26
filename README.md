@@ -44,26 +44,34 @@ few seconds), not polled.
 
 ## Pointing your hub at this integration
 
+> **Save a copy of `/data/hub-config.json` off the hub before the
+> integration takes over — whichever path you follow below.** It's
+> the only record of which physical clamp and voltage is wired to
+> each of the 18 positions, and you'll need it to fill in the options
+> flow (step 4). Once the integration starts answering the hub's
+> config fetch, the on-device file gets regenerated on every poll and
+> the original per-channel calibration is gone. Pull a copy with
+> `scp root@<hub>:/data/hub-config.json ./hub-config.json.orig` (or
+> equivalent) and keep it somewhere durable.
+
 > **Automated alternative:** the companion
 > [`ha-curb-update-server`](https://github.com/pvanbaren/ha-curb-update-server)
 > integration impersonates Curb's firmware update endpoint (point
 > `updates.energycurb.com` at your HA host via your DNS server) and
 > serves a payload that both roots the hub and rewrites its endpoints
 > to `homeassistant.local:8989` on the next hourly update check. With
-> that in place you can skip steps 1–3 below — no shell on the hub, no
-> hand-editing `/data/hub-config.json` — and jump straight to step 4 to
+> that in place you can skip steps 1 and 3 below — no manual rooting,
+> no hand-editing `/data/hub-config.json` — but still grab the backup
+> from step 2 once the payload has enabled SSH, then jump to step 4 to
 > map the 18 circuits in the options flow.
 
 1. Gain root access to the hub using
    [codearranger/curbed](https://github.com/codearranger/curbed). That
    project walks through unlocking the hub and getting a shell on it.
-2. **Back up `/data/hub-config.json` before you touch it** (e.g.
-   `cp /data/hub-config.json /data/hub-config.json.orig` and pull a
-   copy off the hub). The integration regenerates this file on the
-   next config fetch and overwrites the per-channel calibration. The
-   backup is the only record of which physical clamp and voltage is
-   wired to each of the 18 positions, which you'll need to re-enter
-   in the integration's options flow — read each channel's
+2. **Back up `/data/hub-config.json` before you touch it** (see the
+   callout above; e.g. `cp /data/hub-config.json /data/hub-config.json.orig`
+   plus a copy pulled off the hub onto your workstation). You'll mine
+   it for per-circuit settings in step 4 — read each channel's
    `clamp_definition_id` to pick the clamp, and compare its
    `i_multiplier` to the canonical 110 V value for that clamp to
    decide the voltage (a ~2× magnitude means 220 V) and polarity
