@@ -60,7 +60,8 @@
       "options": {
         "100a": "100 A",
         "50a": "50 A",
-        "30a": "30 A"
+        "30a": "30 A",
+        "rogowski80100": "Rogowski 80/100 A"
       }
     },
     "voltage": {

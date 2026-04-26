@@ -19,6 +19,7 @@ from .const import (
     CLAMP_30A,
     CLAMP_50A,
     CLAMP_100A,
+    CLAMP_ROGOWSKI80100,
     CONF_CIRCUIT_BIDIRECTIONAL,
     CONF_CIRCUIT_CLAMP,
     CONF_CIRCUIT_INVERTED,
@@ -56,9 +57,10 @@ DEFAULT_ENDPOINTS = {
 # the two voltages independently (visible on XIAMEN30, where the 220V
 # entry differs from 2× the 110V entry by one ULP).
 _DEFINITION_ID: dict[str, str] = {
-    CLAMP_30A:  "XIAMEN30",
-    CLAMP_50A:  "XIAMEN50",
-    CLAMP_100A: "XIAMEN100",
+    CLAMP_30A:           "XIAMEN30",
+    CLAMP_50A:           "XIAMEN50",
+    CLAMP_100A:          "XIAMEN100",
+    CLAMP_ROGOWSKI80100: "ROGOWSKI80100",
 }
 
 _MULTIPLIERS: dict[str, dict[str, tuple[float, float, float]]] = {
@@ -74,6 +76,10 @@ _MULTIPLIERS: dict[str, dict[str, tuple[float, float, float]]] = {
     CLAMP_100A: {
         VOLTAGE_110: (1.7609849656268e-05,    0.00091863534,  0.00091863534),
         VOLTAGE_220: (3.5219699312536e-05,    0.00183727068,  0.00183727068),
+    },
+    CLAMP_ROGOWSKI80100: {
+        VOLTAGE_110: (7.06e-05,               0.0038,         0.0038),
+        VOLTAGE_220: (1.412e-04,              0.0076,         0.0076),
     },
 }
 
