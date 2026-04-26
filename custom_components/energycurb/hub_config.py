@@ -41,10 +41,10 @@ PHASE_COEF_50 = 4197540
 PHASE_COEF_60 = 4198965
 
 DEFAULT_ENDPOINTS = {
-    "hub_config":  "http://border.prod.energycurb.com/v3/hub_config",
-    "messages":    "http://border.prod.energycurb.com/v3/messages",
-    "samples":     "http://border.prod.energycurb.com/v3/samples",
-    "diagnostics": "http://border.prod.energycurb.com/v3/diagnostics",
+    "hub_config":  "http://homeassistant.local:8989/v3/hub_config",
+    "messages":    "http://homeassistant.local:8989/v3/messages",
+    "samples":     "http://homeassistant.local:8989/v3/samples",
+    "diagnostics": "http://homeassistant.local:8989/v3/diagnostics",
 }
 
 # v3.1 CT-clamp multipliers as emitted by Curb's production pipeline,
