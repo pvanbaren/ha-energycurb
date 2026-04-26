@@ -86,10 +86,10 @@ few seconds), not polled.
 4. Open the integration's options flow (Settings → Devices & services
    → Curb → Configure). Enter the hub's sample period (1–60 seconds;
    default 1), then for each of the 18 positions set the clamp
-   (100A / 50A / 30A / Rogowski 80/100 A), voltage (110V / 220V), inverted flag, and the
-   bi-directional flag using your backup of the original
-   `hub-config.json` as reference — match the `clamp_definition_id`
-   and the sign/magnitude of the multipliers.
+   (`XIAMEN100` / `XIAMEN50` / `XIAMEN30` / `ROGOWSKI80100`), voltage
+   (110V / 220V), inverted flag, and the bi-directional flag using your
+   backup of the original `hub-config.json` as reference — match the
+   `clamp_definition_id` and the sign/magnitude of the multipliers.
 
 From then on the hub posts samples directly to this integration and
 fetches its own future configs from `/v3/hub_config/<serial>` — which
@@ -171,8 +171,11 @@ holds one per-hub field at the top followed by one section per circuit:
 
 - **Name** — shown as the sensor's friendly name in HA. Defaults run
   A1–A6, B1–B6, C1–C6.
-- **Current clamp** — `100A`, `50A`, or `30A` (Xiamen CT), or
-  `Rogowski 80/100 A` (`ROGOWSKI80100` flexible coil).
+- **Current clamp** — one of:
+  - `XIAMEN30` — 30 A Xiamen split-core CT.
+  - `XIAMEN50` — 50 A Xiamen split-core CT.
+  - `XIAMEN100` — 100 A Xiamen split-core CT.
+  - `ROGOWSKI80100` — 80/100 A Rogowski flexible coil.
 - **Voltage** — `110V` or `220V`. Each voltage has its own production
   multiplier lookup; 220 V entries are copied verbatim from Curb's
   reference hub-config.json so the generated file matches byte-for-byte.
