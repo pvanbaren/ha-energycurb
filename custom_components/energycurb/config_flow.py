@@ -181,32 +181,37 @@ class CurbOptionsFlow(OptionsFlow):
             return list(existing) + defaults[len(existing):]
         return defaults
 
-    def _current_sample_period(self) -> int:
+    def _current_sample_period(self) -> str:
+        """Form-default for the dropdown — '1' or '60'.
+
+        Any previously-saved integer (the field was a free-form 1–60 box
+        in earlier 1.1.0 development) is normalized to the nearest of
+        the two new options.
+        """
         assert self._serial is not None
         devices = self._entry.options.get(CONF_DEVICES, {})
         val = devices.get(self._serial, {}).get(CONF_SAMPLE_PERIOD_S)
         if val is None:
-            return DEFAULT_SAMPLE_PERIOD_S
+            return str(DEFAULT_SAMPLE_PERIOD_S)
         try:
-            return max(1, int(round(float(val))))
+            n = max(1, int(round(float(val))))
         except (TypeError, ValueError):
-            return DEFAULT_SAMPLE_PERIOD_S
+            return str(DEFAULT_SAMPLE_PERIOD_S)
+        return "1" if n <= 1 else "60"
 
     def _circuits_schema(
         self,
-        sample_period_s: int,
+        sample_period_s: str,
         defaults: list[dict[str, Any]],
     ) -> vol.Schema:
         fields: dict[Any, Any] = {
             vol.Required(
                 CONF_SAMPLE_PERIOD_S, default=sample_period_s
-            ): NumberSelector(
-                NumberSelectorConfig(
-                    min=1,
-                    max=60,
-                    step=1,
-                    mode=NumberSelectorMode.BOX,
-                    unit_of_measurement="s",
+            ): SelectSelector(
+                SelectSelectorConfig(
+                    options=["1", "60"],
+                    mode=SelectSelectorMode.DROPDOWN,
+                    translation_key="sample_period",
                 )
             ),
         }

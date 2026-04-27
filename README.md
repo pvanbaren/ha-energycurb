@@ -187,30 +187,25 @@ followed by one section per detected channel:
 
 **Per hub**
 
-- **Sample period (seconds)** — integer, 1–60, default 1. Written into
-  the generated hub-config.json as `sampling.sample_period_ms`
-  (`period × 1000`). In current firmware the streamer always emits
-  raw samples at 1 Hz regardless of this value, but the option also
-  controls **where the integration takes its power readings from**:
-  - `1` — power tracks the raw 1-second sample stream (live, ~1 Hz).
-  - `>1` — power tracks the hub's 1-minute aggregate stream (one
-    update per minute). Pick this if you don't need second-by-second
-    power on the dashboard and want to slash recorder churn.
+- **Power update interval** — `1 second` or `1 minute` (default
+  `1 second`). Sets how often the power sensors refresh in Home
+  Assistant. Energy totals always update once per minute regardless,
+  and the hub's internal sampling rate is unchanged (the firmware
+  ignores `sampling.sample_period_ms` and always emits at 1 Hz).
+  - **`1 second`** — power tracks the raw 1 Hz stream. Pick for
+    live dashboards or real-time power-threshold automations. Costs
+    ~36 power state-writes per second per hub against HA's recorder.
+  - **`1 minute`** — power refreshes once per minute from the same
+    aggregate stream that drives energy. ~60× less recorder load,
+    and transient spikes are smoothed out by the aggregate.
 
-  **Energy always comes from the 1-minute aggregate**, regardless of
-  this setting — accumulating once per minute instead of once per
-  second is ~60× less recorder pressure with no impact on
-  long-term statistics or the Energy dashboard. The hub additionally
-  posts 5-minute / 1-hour / 1-day rollup aggregates; those are
-  rolled-up versions of the same 1-minute data, so the integration
-  drops them to avoid double-counting.
-
-  Note: 1-minute aggregates carry the *net* signed Wh for the
-  minute, so a bi-directional circuit that imports and exports in
-  equal measure within a single minute nets to zero and contributes
-  no Wh delta in either direction. Slow-moving feeds (typical solar
-  / grid mains) are unaffected; fast-flipping loads lose sub-minute
-  fidelity in the energy counters.
+  The hub also posts 5-minute / 1-hour / 1-day rollups of the same
+  1-minute data; those are dropped to avoid double-counting.
+  Bi-directional caveat: a 1-minute aggregate carries the period's
+  *net* signed Wh, so a circuit that imports and exports in equal
+  measure within a single minute nets to zero and contributes no Wh
+  delta. Slow-moving feeds (solar / grid mains) are unaffected;
+  fast-flipping loads lose sub-minute fidelity.
 
 **Per circuit** (A1 … C6)
 

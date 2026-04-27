@@ -60,7 +60,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await server.async_start()
     except OSError as err:
         raise ConfigEntryNotReady(
-            f"Failed to bind {host}:{port} — {err}"
+            f"Failed to bind {host}:{port} - {err}"
         ) from err
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = server
