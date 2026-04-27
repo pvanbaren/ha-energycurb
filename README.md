@@ -22,8 +22,8 @@ what answers.
   one extra per circuit flagged bi-directional). The channel count is
   auto-detected from the first samples POST:
   - **Power** (`device_class: power`, `state_class: measurement`, unit `W`)
-    — instantaneous draw, derived as `|w| × 3600 / T`, where `T` is the
-    configured sample period in seconds (default 1).
+    — instantaneous draw, derived as `w × 3600 / p`, where `p` is the
+    sample's own period field (1 second in current firmware).
   - **Energy** (`device_class: energy`, `state_class: total_increasing`,
     unit `kWh`) — cumulative consumption. For non-bidirectional circuits
     it's `Σ |w|`; for bi-directional circuits it's `Σ max(w, 0)` so the
@@ -188,7 +188,16 @@ followed by one section per detected channel:
   appear to be ignored or mishandled by the streamer firmware. The
   field is exposed because the underlying hub-config option exists;
   leave it at `1` unless you have evidence your hub honors a different
-  value.
+  value. The integration's power/energy math reads each sample's own
+  `p` field, so if a future firmware does honor a higher period the
+  scaling will follow automatically.
+
+  Independently of the configured period, the hub also POSTs
+  time-averaged aggregate samples (1-min / 5-min / 1-hr / 1-day) to
+  the same endpoint — those are part of the streamer's offline-queue
+  backfill / cloud reporting and use a different unit convention for
+  `w`. The integration filters them out and only consumes raw 1-second
+  samples; aggregates are logged at debug and discarded.
 
 **Per circuit** (A1 … C6)
 

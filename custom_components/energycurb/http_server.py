@@ -265,8 +265,29 @@ class CurbHttpServer:
 
         samples = payload.get("s", []) if isinstance(payload, dict) else []
         samples = sorted(samples, key=lambda s: s.get("t", 0))
+        # The hub multiplexes raw 1-second samples with time-averaged
+        # aggregates (1-min / 5-min / 1-hr / 1-day) onto the same
+        # endpoint — the aggregates are the streamer's offline-queue
+        # backfill / cloud reporting feed. Crucially the two flavors
+        # use different units in the channel `w` field: raw samples
+        # report signed Wh over the sample interval, aggregates report
+        # average W. Feeding aggregates through _apply_sample would
+        # corrupt power readings and double-count energy (since raw
+        # samples already cover the same time window). Filter them out
+        # by the top-level period field (`p`); raw samples are p=1 or
+        # have no p field, aggregates carry p in {60, 300, 3600, 86400}.
+        skipped = 0
         for sample in samples:
+            if sample.get("p", 1) != 1:
+                skipped += 1
+                continue
             self._apply_sample(serial, sample)
+        if skipped:
+            _LOGGER.debug(
+                "%s: skipped %d aggregated/backfill sample(s)",
+                serial,
+                skipped,
+            )
 
         return web.Response(
             status=200,
@@ -338,12 +359,14 @@ class CurbHttpServer:
         )
 
     def _apply_sample(self, serial: str, sample: dict[str, Any]) -> None:
-        # Hub reports `w` per channel as signed Wh over the sample
-        # interval. The power sensor exposes the signed W reading; the
-        # energy counters each accumulate a monotonic view of that Wh.
-        # The per-group channel counts also tell us this hub's chip
-        # layout, which we capture on the first POST so the right number
-        # of sensors get created.
+        # Caller (`_handle_samples`) has already filtered out
+        # time-averaged aggregates, so `sample` here is a raw 1-second
+        # reading: `w` per channel is signed Wh over the sample's `p`
+        # seconds (1 in current firmware). The power sensor exposes the
+        # signed W reading; the energy counters each accumulate a
+        # monotonic view of that Wh. The per-group channel counts also
+        # tell us this hub's chip layout, which we capture on the first
+        # POST so the right number of sensors get created.
         groups = sample.get("g", []) or []
         sample_wh: list[float] = []
         layout: list[int] = []
@@ -379,13 +402,20 @@ class CurbHttpServer:
             self.chip_channels[serial] = layout
 
         circuits = self.circuits_for(serial)
-        period_s = self.sample_period_for(serial)
+        # `p` is the sample's actual averaging interval in seconds.
+        # For the raw real-time samples we process here it's 1 (or
+        # missing); we still read it from the sample so the math is
+        # right if a future firmware ever honors a higher
+        # sampling.sample_period_ms value. The user-configured
+        # sample_period_s option doesn't enter the calc — it only
+        # affects what we write into the generated hub-config.json.
+        sample_period_s = max(1, int(sample.get("p") or 1))
         power_store = self.latest.setdefault(serial, {})
         energy_store = self.energy_wh.setdefault(serial, {})
         production_store = self.energy_wh_production.setdefault(serial, {})
         for i, wh in enumerate(sample_wh):
             # Wh / period_s = Wh per second → ×3600 = W.
-            power_store[i] = wh / period_s * WH_PER_SEC_TO_W
+            power_store[i] = wh / sample_period_s * WH_PER_SEC_TO_W
             if circuits[i].get(CONF_CIRCUIT_BIDIRECTIONAL):
                 if wh > 0:
                     energy_store[i] = energy_store.get(i, 0.0) + wh
