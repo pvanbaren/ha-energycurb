@@ -42,19 +42,20 @@ loosely based on [Keep a Changelog](https://keepachangelog.com/).
   1-minute aggregate stream.** Energy sensors now write state once per
   minute instead of once per second — roughly 60× less recorder
   pressure with no impact on long-term statistics or the Energy
-  dashboard. Per-minute Wh delta is computed from the aggregate's
-  average watts as `avg_w × 60 / 3600`.
+  dashboard. The aggregate's `w` field is already the period's signed
+  Wh, so it's summed directly into the energy counters.
 - **Power-reading source is selectable** via the Sample period
   option: `1` keeps the live 1 Hz update from the raw stream;
   anything higher takes power from the 1-minute aggregate (one
   update per minute) so users with bandwidth/log concerns can opt
   out of second-by-second power without losing energy data.
 - **Mixed sample types are now distinguished by the top-level `p`
-  field.** Raw samples (`p == 1`, `w` in Wh/sec) feed power; 1-minute
-  aggregates (`p == 60`, `w` in average watts) feed energy and
-  optionally power. 5-minute / 1-hour / 1-day rollups are dropped to
-  avoid double-counting. Previously the integration treated every
-  sample as raw, which corrupted readings whenever an aggregate
+  field.** Raw samples (`p == 1`) feed power; 1-minute aggregates
+  (`p == 60`) feed energy and optionally power. Both carry `w` in Wh
+  over the period — the period only affects the Wh→W conversion.
+  5-minute / 1-hour / 1-day rollups are dropped to avoid
+  double-counting. Previously the integration treated every sample as
+  raw at fixed 1 s, which corrupted readings whenever an aggregate
   arrived.
 - **Clamp dropdown labels** now include the Curb part number alongside
   the rating (`30 A (XIAMEN30)`, `Rogowski 80/100 A (ROGOWSKI80100)`,
@@ -82,11 +83,11 @@ loosely based on [Keep a Changelog](https://keepachangelog.com/).
 ### Known limitations
 - **Bi-directional fidelity at sub-minute timescales is reduced.**
   Energy is accumulated from the hub's 1-minute aggregate, which
-  carries only the minute's *average* signed watts. A circuit that
-  imports and exports in equal measure within a single minute will
-  average to zero and contribute no Wh delta in either direction.
-  Slow-moving feeds (typical solar/grid mains) are unaffected;
-  fast-flipping loads lose sub-minute fidelity in the energy counters.
+  carries the minute's *net* signed Wh. A circuit that imports and
+  exports in equal measure within a single minute nets to zero and
+  contributes no Wh delta in either direction. Slow-moving feeds
+  (typical solar/grid mains) are unaffected; fast-flipping loads lose
+  sub-minute fidelity in the energy counters.
 - **`sampling.sample_period_ms` may be ignored by the streamer
   firmware.** The integration writes whatever you set, but the hub
   appears to keep emitting raw samples at 1 Hz regardless. The

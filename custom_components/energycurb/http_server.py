@@ -266,20 +266,21 @@ class CurbHttpServer:
         samples = payload.get("s", []) if isinstance(payload, dict) else []
         samples = sorted(samples, key=lambda s: s.get("t", 0))
         # The hub multiplexes two kinds of sample on this endpoint:
-        #   p == 1            raw 1-second readings ("w" is signed Wh)
-        #   p == 60           1-minute aggregates  ("w" is avg W)
-        #   p in {300,3600,86400}  5-min / 1-hr / 1-day aggregates,
-        #                          which are just rolled-up versions
-        #                          of the 1-minute data — using them
+        #   p == 1            raw 1-second readings (w is signed Wh/1s)
+        #   p == 60           1-minute aggregates (w is signed Wh/60s)
+        #   p in {300,3600,86400}  5-min / 1-hr / 1-day rollups of the
+        #                          same 1-minute data — using them
         #                          would double-count, so we drop them.
         #
-        # Energy accumulation reads exclusively from 1-minute
-        # aggregates (one Wh delta per minute → one HA state write per
-        # minute, vs one per second from the raw stream — ~60x less
-        # recorder pressure with no impact on long-term statistics).
-        # Power tracks whichever source matches the user-configured
-        # sample period: raw at 1 Hz when sample_period_s == 1, the
-        # 1-minute aggregate otherwise.
+        # `w` is in Wh for both kinds; the period only affects the
+        # Wh→W conversion when deriving power. Energy accumulation
+        # reads exclusively from 1-minute aggregates (one Wh delta per
+        # minute → one HA state write per minute, vs one per second
+        # from the raw stream — ~60x less recorder pressure with no
+        # impact on long-term statistics). Power tracks whichever
+        # source matches the user-configured sample period: raw at
+        # 1 Hz when sample_period_s == 1, the 1-minute aggregate
+        # otherwise.
         use_raw_power = self.sample_period_for(serial) == 1
         skipped = 0
         for sample in samples:
@@ -387,21 +388,23 @@ class CurbHttpServer:
     ) -> None:
         """Ingest one sample, optionally updating power and/or energy.
 
-        The channel-level `w` field changes meaning with the sample's
-        period (`p`):
-          p == 1   — raw 1-second sample. `w` is signed Wh over 1s.
-                     Power = w × 3600. Energy is *not* updated here;
-                     accumulation happens exclusively from p=60 samples.
-          p == 60  — 1-minute aggregate. `w` is the signed average W
-                     over the minute. Power = w. Energy increment for
-                     this channel = w × p / 3600 Wh.
+        The channel-level `w` field is signed Wh over the sample's `p`
+        seconds for both raw and aggregated samples — the period only
+        affects how Wh maps to instantaneous power, not the Wh value
+        itself.
+          power      = w × 3600 / p  (Wh/p seconds → W)
+          energy Δ   = w             (sum the Wh directly)
 
-        Bi-directional caveat: aggregates only carry the average signed
-        watts, so a circuit that imports and exports in equal measure
-        within a minute averages to zero and contributes no Wh delta to
-        either consumption or production. Slow-moving feeds (typical
-        solar/grid mains) are unaffected; fast-flipping loads lose
-        sub-minute fidelity.
+        Energy is only ever updated from the 1-minute aggregate stream
+        (gates the per-channel store at 1 update/min instead of 1/sec
+        — ~60× less recorder pressure).
+
+        Bi-directional caveat: aggregates report the period's *net*
+        signed Wh, so a circuit that imports and exports in equal
+        measure within a single minute nets to zero and contributes no
+        delta to either consumption or production. Slow-moving feeds
+        (typical solar/grid mains) are unaffected; fast-flipping loads
+        lose sub-minute fidelity in the energy counters.
 
         Layout detection happens on every sample type, so the chip
         layout is learned even if neither power nor energy is updated.
@@ -444,31 +447,25 @@ class CurbHttpServer:
         circuits = self.circuits_for(serial)
 
         if update_power:
+            # w is Wh over `period_s` seconds → average W = w × 3600 / p.
             power_store = self.latest.setdefault(serial, {})
-            if period_s == 1:
-                # Raw: w is Wh over 1 s. Convert to W.
-                for i, w in enumerate(sample_w):
-                    power_store[i] = w * WH_PER_SEC_TO_W
-            else:
-                # Aggregate: w is already the average W over period_s.
-                for i, w in enumerate(sample_w):
-                    power_store[i] = w
+            for i, w in enumerate(sample_w):
+                power_store[i] = w * WH_PER_SEC_TO_W / period_s
 
         if update_energy:
-            # Aggregate: avg W × period_s seconds = Ws → /3600 = Wh.
+            # w is the period's signed Wh delta — accumulate directly.
             energy_store = self.energy_wh.setdefault(serial, {})
             production_store = self.energy_wh_production.setdefault(serial, {})
             for i, w in enumerate(sample_w):
-                wh_delta = w * period_s / WH_PER_SEC_TO_W
                 if circuits[i].get(CONF_CIRCUIT_BIDIRECTIONAL):
                     if w > 0:
-                        energy_store[i] = energy_store.get(i, 0.0) + wh_delta
+                        energy_store[i] = energy_store.get(i, 0.0) + w
                     elif w < 0:
                         production_store[i] = (
-                            production_store.get(i, 0.0) - wh_delta
+                            production_store.get(i, 0.0) - w
                         )
                 else:
-                    energy_store[i] = energy_store.get(i, 0.0) + abs(wh_delta)
+                    energy_store[i] = energy_store.get(i, 0.0) + abs(w)
 
         if (t := sample.get("t")) is not None:
             self.latest_timestamp[serial] = t

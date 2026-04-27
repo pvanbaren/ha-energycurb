@@ -22,22 +22,22 @@ what answers.
   one extra per circuit flagged bi-directional). The channel count is
   auto-detected from the first samples POST:
   - **Power** (`device_class: power`, `state_class: measurement`, unit `W`)
-    — instantaneous draw. Source depends on the configured **Sample
-    period**: at 1 s, derived from raw 1-second samples as
-    `w × 3600`; at any other period, taken directly from the hub's
-    1-minute aggregate (whose `w` is already average watts), so power
-    updates once per minute.
+    — average draw over the sample's period, derived as `w × 3600 / p`
+    where `w` is the sample's signed Wh and `p` is its period in
+    seconds. Source depends on the configured **Sample period**: at
+    1 s, power tracks raw 1-second samples (live at 1 Hz); at any
+    other period, power tracks the hub's 1-minute aggregate (one
+    update per minute).
   - **Energy** (`device_class: energy`, `state_class: total_increasing`,
     unit `kWh`) — cumulative consumption, accumulated *only* from the
     1-minute aggregate samples (one Wh delta per minute = one HA
     state-write per minute, no matter what the sample period is).
-    Per-minute Wh delta is `avg_w × 60 / 3600`; for non-bidirectional
-    circuits the absolute value is summed, for bi-directional circuits
-    only `max(avg_w, 0)` so the counter stays monotonic. Persisted
-    across restarts so long-term statistics and the Energy dashboard
-    work out of the box.
+    For non-bidirectional circuits the absolute Wh value is summed,
+    `Σ |w|`; for bi-directional circuits only `Σ max(w, 0)` so the
+    counter stays monotonic. Persisted across restarts so long-term
+    statistics and the Energy dashboard work out of the box.
   - **Energy Production** (same device/state class, only created for
-    bi-directional circuits) — cumulative back-feed, `Σ max(-avg_w, 0) × 60 / 3600`.
+    bi-directional circuits) — cumulative back-feed, `Σ max(-w, 0)`.
 - Each hub appears as its own HA **device** identified by its serial.
 
 `iot_class` is `local_push` — data arrives on every hub sample (~every
@@ -205,11 +205,11 @@ followed by one section per detected channel:
   rolled-up versions of the same 1-minute data, so the integration
   drops them to avoid double-counting.
 
-  Note: 1-minute aggregates only carry the *average* signed watts,
-  so a bi-directional circuit that imports and exports in equal
-  measure within a single minute averages to zero and contributes no
-  Wh delta in either direction. Slow-moving feeds (typical solar /
-  grid mains) are unaffected; fast-flipping loads lose sub-minute
+  Note: 1-minute aggregates carry the *net* signed Wh for the
+  minute, so a bi-directional circuit that imports and exports in
+  equal measure within a single minute nets to zero and contributes
+  no Wh delta in either direction. Slow-moving feeds (typical solar
+  / grid mains) are unaffected; fast-flipping loads lose sub-minute
   fidelity in the energy counters.
 
 **Per circuit** (A1 … C6)
