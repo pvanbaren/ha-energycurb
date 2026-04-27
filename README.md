@@ -17,8 +17,10 @@ what answers.
 - Binds an HTTP listener on a user-configurable host/port.
 - Accepts `POST /v3/samples/<serial>` from any number of Curb hubs.
 - Decodes the `deflate` + MessagePack body.
-- Creates 36 native `sensor.*` entities per hub (or 54 if every
-  circuit is marked bi-directional) — two or three per circuit:
+- Creates two or three native `sensor.*` entities per circuit (so 36
+  for an 18-channel standard hub, 24 for a 12-channel Lite hub, plus
+  one extra per circuit flagged bi-directional). The channel count is
+  auto-detected from the first samples POST:
   - **Power** (`device_class: power`, `state_class: measurement`, unit `W`)
     — instantaneous draw, derived as `|w| × 3600 / T`, where `T` is the
     configured sample period in seconds (default 1).
@@ -47,7 +49,7 @@ few seconds), not polled.
 > **Save a copy of `/data/hub-config.json` off the hub before the
 > integration takes over — whichever path you follow below.** It's
 > the only record of which physical clamp and voltage is wired to
-> each of the 18 positions, and you'll need it to fill in the options
+> each channel position, and you'll need it to fill in the options
 > flow (step 4). Once the integration starts answering the hub's
 > config fetch, the on-device file gets regenerated on every poll and
 > the original per-channel calibration is gone. Pull a copy with
@@ -63,7 +65,7 @@ few seconds), not polled.
 > that in place you can skip steps 1 and 3 below — no manual rooting,
 > no hand-editing `/data/hub-config.json` — but still grab the backup
 > from step 2 once the payload has enabled SSH, then jump to step 4 to
-> map the 18 circuits in the options flow.
+> map the circuits in the options flow.
 
 1. Gain root access to the hub using
    [codearranger/curbed](https://github.com/codearranger/curbed). That
@@ -93,7 +95,9 @@ few seconds), not polled.
    next poll, then restart the hub (or just the `streamer` service).
 4. Open the integration's options flow (Settings → Devices & services
    → Curb → Configure). Enter the hub's sample period (1–60 seconds;
-   default 1), then for each of the 18 positions set the clamp
+   default 1), then for each channel position the hub reports (the
+   form auto-sizes to whatever the hub actually has — 18 for a
+   standard 4-chip hub, 12 for a Lite 2-chip hub) set the clamp
    (`XIAMEN100` / `XIAMEN50` / `XIAMEN30` / `ROGOWSKI80100`), voltage
    (110V / 220V), inverted flag, and the bi-directional flag using your
    backup of the original `hub-config.json` as reference — match the
@@ -133,10 +137,13 @@ clamp/voltage mapping from the HA options flow.
 On the first POST from a serial, the integration:
 
 1. Registers an HA device `Curb <serial>` (manufacturer: Curb).
-2. Attaches 36 sensors — one power + one energy per circuit, plus one
-   extra "Energy Production" sensor for any circuit flagged
-   bi-directional. With default circuit names `A1`…`C6`, entity IDs
-   come out as:
+2. Detects the hub's chip layout from the sample (e.g. `[6,6,3,3]` for
+   a standard 4-chip hub → 18 channels, `[6,6]` for a Lite 2-chip hub
+   → 12 channels) and attaches one power + one energy sensor per
+   channel, plus one extra "Energy Production" sensor for any circuit
+   flagged bi-directional. With default circuit names (`A1`…`A6`,
+   `B1`…`B6`, optionally `C1`…`C6` on standard hubs), entity IDs come
+   out as:
    ```
    sensor.curb_<serial>_a1              sensor.curb_<serial>_a1_energy
    sensor.curb_<serial>_a2              sensor.curb_<serial>_a2_energy
@@ -164,9 +171,12 @@ and reloads.
 
 ## Circuit configuration
 
-Each hub exposes 18 circuits in a fixed physical order (groups of 6, 6, 3, 3).
-From **Settings → Devices & services → Curb → Configure**, a single form
-holds one per-hub field at the top followed by one section per circuit:
+Each hub exposes its channels in a fixed physical order: a standard
+4-chip hub has 18 channels grouped 6, 6, 3, 3; a Lite 2-chip hub has
+12 channels grouped 6, 6. The exact count is auto-detected from the
+hub's first samples POST. From **Settings → Devices & services → Curb
+→ Configure**, a single form holds one per-hub field at the top
+followed by one section per detected channel:
 
 **Per hub**
 
@@ -209,7 +219,7 @@ periodic refresh).
 - **`Failed to bind … Address already in use`**: another service has the
   port. Pick a different one and reconfigure.
 - **Entities stay unavailable**: the hub has reached you but its samples
-  don't contain the expected 18 circuits. Enable debug logging:
+  decoded to an empty channel list. Enable debug logging:
   ```yaml
   logger:
     logs:

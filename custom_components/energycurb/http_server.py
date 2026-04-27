@@ -19,9 +19,9 @@ from .const import (
     CONF_CIRCUIT_BIDIRECTIONAL,
     CONF_DEVICES,
     CONF_SAMPLE_PERIOD_S,
+    DEFAULT_CHIP_CHANNELS,
     DEFAULT_SAMPLE_PERIOD_S,
     DOMAIN,
-    NUM_CIRCUITS,
     SIGNAL_NEW_DEVICE,
     SIGNAL_UPDATE_FMT,
     WH_PER_SEC_TO_W,
@@ -29,6 +29,15 @@ from .const import (
 from .hub_config import build_hub_config, default_circuits
 
 _LOGGER = logging.getLogger(__name__)
+
+# Chip layouts we accept from a samples POST. Anything else is treated
+# as a malformed payload — we refuse to learn an unknown shape (which
+# would resize the sensor list to whatever garbage the hub just sent)
+# and skip the sample.
+_KNOWN_LAYOUTS: tuple[tuple[int, ...], ...] = (
+    (6, 6, 3, 3),  # Standard 4-chip hubs (00613, 00614, 00614_*, 00624)
+    (6, 6),        # Lite 2-chip hubs (00615, 00619, 00625)
+)
 
 
 def _try_msgpack(data: bytes) -> Any:
@@ -107,6 +116,10 @@ class CurbHttpServer:
         # total_increasing semantics.
         self.energy_wh: dict[str, dict[int, float]] = {}
         self.energy_wh_production: dict[str, dict[int, float]] = {}
+        # Per-hub ADE chip layout, learned from the first samples POST
+        # we see. Persisted alongside the energy counters so a Lite hub
+        # gets the right number of sensors recreated across HA restarts.
+        self.chip_channels: dict[str, list[int]] = {}
         self._energy_store: Store = Store(
             hass, ENERGY_STORAGE_VERSION, _energy_storage_key(entry)
         )
@@ -118,18 +131,21 @@ class CurbHttpServer:
         # requests, so the first POST's delta is added to the right base
         # value (and the sensors come up with their last-saved totals).
         #
-        # Storage shape evolved once without a version bump:
+        # Storage shape evolved across versions without a version bump:
         #   pre-bidirectional : flat {serial: {idx: wh}} of |w| totals
-        #   current           : {"energy","production": {serial: {idx: wh}}}
+        #   pre-multi-model   : {"energy","production": {serial: {idx: wh}}}
+        #   current           : adds {"chip_channels": {serial: [n,...]}}
         # Detect by the top-level keys and map flat data into `energy`.
         stored = await self._energy_store.async_load()
         if stored:
             if "energy" in stored or "production" in stored:
                 energy_data = stored.get("energy", {})
                 production_data = stored.get("production", {})
+                chip_data = stored.get("chip_channels", {})
             else:
                 energy_data = stored
                 production_data = {}
+                chip_data = {}
             for target, data in (
                 (self.energy_wh, energy_data),
                 (self.energy_wh_production, production_data),
@@ -139,6 +155,9 @@ class CurbHttpServer:
                         int(k): float(v) for k, v in circuits.items()
                     }
                     self.serials.add(serial)
+            for serial, layout in chip_data.items():
+                if isinstance(layout, list) and layout:
+                    self.chip_channels[serial] = [int(n) for n in layout]
 
         app = web.Application()
         app.router.add_post("/v3/samples/{serial}", self._handle_samples)
@@ -173,13 +192,36 @@ class CurbHttpServer:
             await self._runner.cleanup()
             self._runner = None
 
+    def chip_channels_for(self, serial: str) -> list[int]:
+        """Return the per-chip channel layout for `serial`.
+
+        Falls back to the standard 4-chip layout until we've seen a
+        samples POST that tells us otherwise. Returns a fresh list so
+        callers can't accidentally mutate the live server state.
+        """
+        stored = self.chip_channels.get(serial)
+        return list(stored) if stored else list(DEFAULT_CHIP_CHANNELS)
+
+    def num_circuits_for(self, serial: str) -> int:
+        """Total channel count for `serial`."""
+        return sum(self.chip_channels_for(serial))
+
     def circuits_for(self, serial: str) -> list[dict[str, Any]]:
-        """Return the 18-circuit config for `serial`, or defaults if absent."""
+        """Per-circuit config for `serial`, sized to its detected layout.
+
+        Pads with defaults if the saved options are too short, truncates
+        if they're too long — so a hub that switches model (or loads
+        legacy 18-entry options under a Lite layout) still works.
+        """
+        n = self.num_circuits_for(serial)
         devices = self.entry.options.get(CONF_DEVICES, {})
         cfg = devices.get(serial, {}).get(CONF_CIRCUITS)
-        if cfg and len(cfg) == NUM_CIRCUITS:
-            return cfg
-        return default_circuits()
+        if cfg and len(cfg) >= n:
+            return cfg[:n]
+        defaults = default_circuits(n)
+        if cfg:
+            return list(cfg) + defaults[len(cfg):]
+        return defaults
 
     def sample_period_for(self, serial: str) -> int:
         """Return the configured sample period (whole seconds, ≥ 1)."""
@@ -244,6 +286,7 @@ class CurbHttpServer:
             self.circuits_for(serial),
             base_url=base_url,
             sample_period_s=self.sample_period_for(serial),
+            chip_channels=self.chip_channels_for(serial),
         )
         return web.Response(
             status=200,
@@ -298,19 +341,42 @@ class CurbHttpServer:
         # Hub reports `w` per channel as signed Wh over the sample
         # interval. The power sensor exposes the signed W reading; the
         # energy counters each accumulate a monotonic view of that Wh.
+        # The per-group channel counts also tell us this hub's chip
+        # layout, which we capture on the first POST so the right number
+        # of sensors get created.
+        groups = sample.get("g", []) or []
         sample_wh: list[float] = []
-        for group in sample.get("g", []):
-            for ch in group.get("c", []):
+        layout: list[int] = []
+        for group in groups:
+            channels = group.get("c", []) or []
+            layout.append(len(channels))
+            for ch in channels:
                 w_wh = ch.get("w") or 0
                 sample_wh.append(float(w_wh))
-        if len(sample_wh) != NUM_CIRCUITS:
-            _LOGGER.debug(
-                "%s: expected %d circuits, got %d — skipping",
+        if not sample_wh:
+            _LOGGER.debug("%s: empty sample — skipping", serial)
+            return
+
+        if tuple(layout) not in _KNOWN_LAYOUTS:
+            _LOGGER.warning(
+                "%s: unknown chip layout %s (expected one of %s) — "
+                "skipping sample",
                 serial,
-                NUM_CIRCUITS,
-                len(sample_wh),
+                layout,
+                [list(known) for known in _KNOWN_LAYOUTS],
             )
             return
+
+        prior_layout = self.chip_channels.get(serial)
+        if prior_layout != layout:
+            if prior_layout is not None:
+                _LOGGER.info(
+                    "%s: chip layout changed %s -> %s",
+                    serial,
+                    prior_layout,
+                    layout,
+                )
+            self.chip_channels[serial] = layout
 
         circuits = self.circuits_for(serial)
         period_s = self.sample_period_for(serial)
@@ -348,4 +414,5 @@ class CurbHttpServer:
         return {
             "energy": self.energy_wh,
             "production": self.energy_wh_production,
+            "chip_channels": self.chip_channels,
         }

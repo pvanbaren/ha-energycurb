@@ -1,8 +1,8 @@
 """Build a v3.1 hub-config.json body for a Curb hub.
 
-Given an 18-circuit list (name / clamp / voltage / inverted per
-entry), emit the hub-config.json the Lamarr streamer expects from
-/v3/hub_config/<hub_id>.
+Given a per-circuit list (name / clamp / voltage / inverted per
+entry) and the hub's chip layout, emit the hub-config.json the Lamarr
+streamer expects from /v3/hub_config/<hub_id>.
 
 We only handle the v3.1 hub-config.json here — the legacy pre-v3
 config.json and lamarr_config.sh aren't served over HTTP by the hub, so
@@ -15,7 +15,6 @@ import uuid
 from typing import Any
 
 from .const import (
-    CHIP_CHANNELS,
     CLAMP_30A,
     CLAMP_50A,
     CLAMP_100A,
@@ -25,8 +24,9 @@ from .const import (
     CONF_CIRCUIT_INVERTED,
     CONF_CIRCUIT_NAME,
     CONF_CIRCUIT_VOLTAGE,
+    DEFAULT_CHIP_CHANNELS,
+    DEFAULT_NUM_CIRCUITS,
     DEFAULT_SAMPLE_PERIOD_S,
-    NUM_CIRCUITS,
     VOLTAGE_110,
     VOLTAGE_220,
 )
@@ -135,22 +135,30 @@ def build_hub_config(
     base_url: str | None = None,
     revision: int | None = None,
     sample_period_s: int = DEFAULT_SAMPLE_PERIOD_S,
+    chip_channels: list[int] | None = None,
 ) -> dict[str, Any]:
     """Return the v3.1 hub-config.json body for one hub.
+
+    `chip_channels` is the per-ADE-chip channel count list (e.g.
+    [6,6,3,3] for a standard 4-chip hub, [6,6] for a Lite 2-chip hub).
+    Defaults to the standard 4-chip layout when omitted.
 
     `sample_period_s` is the streamer's sample interval in whole
     seconds (minimum 1); it's serialized as `sampling.sample_period_ms =
     sample_period_s * 1000`. Non-integer or sub-1s values get rounded
     and clamped so the config is always well-formed.
     """
-    if len(circuits) != NUM_CIRCUITS:
+    layout = list(chip_channels) if chip_channels else list(DEFAULT_CHIP_CHANNELS)
+    expected = sum(layout)
+    if len(circuits) != expected:
         raise ValueError(
-            f"expected {NUM_CIRCUITS} circuits, got {len(circuits)}"
+            f"expected {expected} circuits for layout {layout}, "
+            f"got {len(circuits)}"
         )
 
     groups_out = []
     idx = 0
-    for n in CHIP_CHANNELS:
+    for n in layout:
         channels_out = [_build_channel(circuits[idx + i]) for i in range(n)]
         idx += n
         groups_out.append({
@@ -181,13 +189,16 @@ def build_hub_config(
 
 
 def _default_circuit_name(idx: int) -> str:
-    # 18 circuits labelled A1..A6, B1..B6, C1..C6.
-    bank = "ABC"[idx // 6]
+    # Banks of 6: A1..A6, B1..B6, C1..C6, D1..D6, ... (covers any
+    # likely hub size without running out of letters).
+    bank = chr(ord("A") + idx // 6)
     return f"{bank}{(idx % 6) + 1}"
 
 
-def default_circuits() -> list[dict[str, Any]]:
-    """A fresh 18-circuit list with sensible starting values."""
+def default_circuits(
+    num_circuits: int = DEFAULT_NUM_CIRCUITS,
+) -> list[dict[str, Any]]:
+    """A fresh `num_circuits`-entry list with sensible starting values."""
     return [
         {
             CONF_CIRCUIT_NAME: _default_circuit_name(i),
@@ -196,5 +207,5 @@ def default_circuits() -> list[dict[str, Any]]:
             CONF_CIRCUIT_INVERTED: False,
             CONF_CIRCUIT_BIDIRECTIONAL: False,
         }
-        for i in range(NUM_CIRCUITS)
+        for i in range(num_circuits)
     ]

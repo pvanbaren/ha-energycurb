@@ -1,4 +1,4 @@
-"""Sensor platform — 18 power + 18 energy (+ production for bidirectional) sensors per Curb hub."""
+"""Sensor platform — power + energy (+ production for bidirectional) sensors per Curb hub circuit."""
 from __future__ import annotations
 
 import logging
@@ -19,7 +19,6 @@ from .const import (
     CONF_CIRCUIT_BIDIRECTIONAL,
     CONF_CIRCUIT_NAME,
     DOMAIN,
-    NUM_CIRCUITS,
     SIGNAL_NEW_DEVICE,
     SIGNAL_UPDATE_FMT,
 )
@@ -40,7 +39,7 @@ async def async_setup_entry(
     def _add_device(serial: str) -> None:
         entities: list[SensorEntity] = []
         circuits = server.circuits_for(serial)
-        for i in range(NUM_CIRCUITS):
+        for i in range(server.num_circuits_for(serial)):
             entities.append(CurbCircuitPowerSensor(server, serial, i))
             entities.append(CurbCircuitEnergySensor(server, serial, i))
             if circuits[i].get(CONF_CIRCUIT_BIDIRECTIONAL):

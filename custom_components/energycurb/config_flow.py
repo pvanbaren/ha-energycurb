@@ -38,13 +38,13 @@ from .const import (
     CONF_SAMPLE_PERIOD_S,
     CONF_SERIAL,
     DEFAULT_HOST,
+    DEFAULT_NUM_CIRCUITS,
     DEFAULT_PORT,
     DEFAULT_SAMPLE_PERIOD_S,
     DOMAIN,
-    NUM_CIRCUITS,
     VOLTAGE_CHOICES,
 )
-from .http_server import enqueue_hub_message
+from .http_server import CurbHttpServer, enqueue_hub_message
 from .hub_config import _default_circuit_name, default_circuits
 
 
@@ -116,7 +116,7 @@ def _voltage_selector() -> SelectSelector:
 
 
 class CurbOptionsFlow(OptionsFlow):
-    """Configure the 18 circuits of a specific discovered hub."""
+    """Configure the per-circuit settings for a specific discovered hub."""
 
     def __init__(self, entry: ConfigEntry) -> None:
         self._entry = entry
@@ -158,13 +158,28 @@ class CurbOptionsFlow(OptionsFlow):
             ),
         )
 
+    def _num_circuits(self) -> int:
+        """Channel count for the current hub, derived from its detected
+        chip layout via the running server (or the default fallback)."""
+        assert self._serial is not None
+        server: CurbHttpServer | None = self.hass.data.get(DOMAIN, {}).get(
+            self._entry.entry_id
+        )
+        if server is None:
+            return DEFAULT_NUM_CIRCUITS
+        return server.num_circuits_for(self._serial)
+
     def _current_circuits(self) -> list[dict[str, Any]]:
         assert self._serial is not None
+        n = self._num_circuits()
         devices = self._entry.options.get(CONF_DEVICES, {})
         existing = devices.get(self._serial, {}).get(CONF_CIRCUITS)
-        if existing and len(existing) == NUM_CIRCUITS:
-            return existing
-        return default_circuits()
+        if existing and len(existing) >= n:
+            return existing[:n]
+        defaults = default_circuits(n)
+        if existing:
+            return list(existing) + defaults[len(existing):]
+        return defaults
 
     def _current_sample_period(self) -> int:
         assert self._serial is not None
@@ -230,7 +245,7 @@ class CurbOptionsFlow(OptionsFlow):
 
         if user_input is not None:
             circuits: list[dict[str, Any]] = []
-            for i in range(NUM_CIRCUITS):
+            for i in range(self._num_circuits()):
                 sub = user_input[_section_key(i)]
                 circuits.append({
                     CONF_CIRCUIT_NAME: sub["name"],

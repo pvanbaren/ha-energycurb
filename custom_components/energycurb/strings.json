@@ -18,7 +18,7 @@
     "step": {
       "init": {
         "title": "Select a Curb hub",
-        "description": "Pick the hub whose 18 circuits you want to configure.",
+        "description": "Pick the hub whose circuits you want to configure.",
         "data": {
           "serial": "Hub serial"
         }

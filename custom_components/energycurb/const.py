@@ -12,14 +12,21 @@ CONF_PORT = "port"
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8989
 
-NUM_CIRCUITS = 18
+# Fallback layout used before the hub's first samples POST tells us how
+# many channels it actually has. Standard 4-chip 00614-class hubs land
+# at [6,6,3,3] = 18; Lite 2-chip hubs (00615/00619/00625) land at [6,6]
+# = 12. The samples handler overrides these per-serial as soon as a
+# real payload arrives.
+DEFAULT_CHIP_CHANNELS = [6, 6, 3, 3]
+DEFAULT_NUM_CIRCUITS = sum(DEFAULT_CHIP_CHANNELS)
 WH_PER_SEC_TO_W = 3600
 
 SIGNAL_NEW_DEVICE = f"{DOMAIN}_new_device"
 SIGNAL_UPDATE_FMT = f"{DOMAIN}_update_{{serial}}"
 
 # Per-device options shape: entry.options[CONF_DEVICES][serial][CONF_CIRCUITS]
-# is a list of NUM_CIRCUITS dicts with CONF_CIRCUIT_* keys.
+# is a list of per-circuit dicts with CONF_CIRCUIT_* keys, sized to match
+# the hub's detected channel count.
 CONF_DEVICES = "devices"
 CONF_CIRCUITS = "circuits"
 CONF_SERIAL = "serial"
@@ -45,7 +52,3 @@ CLAMP_CHOICES = [CLAMP_100A, CLAMP_50A, CLAMP_30A, CLAMP_ROGOWSKI80100]
 VOLTAGE_110 = "110v"
 VOLTAGE_220 = "220v"
 VOLTAGE_CHOICES = [VOLTAGE_110, VOLTAGE_220]
-
-# Chip/group layout of a full 00614 hub: 4 ADE chips sum to 18 channels.
-# The hub-config.json schema lays channels out in this exact order.
-CHIP_CHANNELS = [6, 6, 3, 3]
