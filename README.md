@@ -190,10 +190,34 @@ followed by one section per detected channel:
 - **Name** — shown as the sensor's friendly name in HA. Defaults run
   A1–A6, B1–B6, C1–C6.
 - **Current clamp** — one of:
-  - `XIAMEN30` — 30 A Xiamen split-core CT.
-  - `XIAMEN50` — 50 A Xiamen split-core CT.
-  - `XIAMEN100` — 100 A Xiamen split-core CT.
-  - `ROGOWSKI80100` — 80/100 A Rogowski flexible coil.
+  - `XIAMEN30` — 30 A Xiamen split-core CT (good for individual
+    branch circuits up to about 24 A continuous).
+  - `XIAMEN50` — 50 A Xiamen split-core CT (mid-size branch circuits,
+    sub-panels under ~40 A).
+  - `XIAMEN100` — 100 A Xiamen split-core CT (mains feeders or large
+    sub-panels in a typical residential install).
+  - `ROGOWSKI80100` — 80/100 A Rogowski flexible coil. Use when a
+    split-core CT can't physically fit around the conductor (large
+    bus bars, bundled service-entrance cable, tight panel
+    enclosures), or when you need to clamp around multiple parallel
+    conductors. Rogowski coils have no iron core, so they don't
+    saturate at high currents and can wrap awkward shapes.
+
+  **Where they can go on the hub:** only the last two ADE chips
+  (positions C1–C6 on a standard 18-channel hub) support Rogowski
+  sensing in firmware — positions A1–A6 and B1–B6 are wired for CT
+  clamps only and will misread if you assign a Rogowski option to
+  them. Lite 2-chip hubs (00615 / 00619 / 00625) don't have the
+  Rogowski-capable chips at all, so the option is exposed but not
+  usable on those models.
+
+  **Hub-model variants for Rogowski current rating:** the
+  `ROGOWSKI80100` multipliers in this integration target the 100 A
+  Rogowski variant (Curb model `00614`). Curb also shipped 600 A
+  (`00614_600`) and 1000 A (`00614_1000`) Rogowski hubs that use
+  different ADE gain settings on chips 3/4 — those aren't currently
+  served correctly; treat the option as 100 A only until a separate
+  high-current variant is added.
 - **Voltage** — `110V` or `220V`. Each voltage has its own production
   multiplier lookup; 220 V entries are copied verbatim from Curb's
   reference hub-config.json so the generated file matches byte-for-byte.
