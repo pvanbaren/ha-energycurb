@@ -182,8 +182,13 @@ followed by one section per detected channel:
 
 - **Sample period (seconds)** — integer, 1–60, default 1. Written into
   the generated hub-config.json as `sampling.sample_period_ms`
-  (`period × 1000`). Larger values reduce POST frequency and log
-  volume at the cost of time resolution.
+  (`period × 1000`). Larger values *should* reduce POST frequency and
+  log volume at the cost of time resolution. **In practice only the
+  default 1-second value is known to work reliably** — other periods
+  appear to be ignored or mishandled by the streamer firmware. The
+  field is exposed because the underlying hub-config option exists;
+  leave it at `1` unless you have evidence your hub honors a different
+  value.
 
 **Per circuit** (A1 … C6)
 
