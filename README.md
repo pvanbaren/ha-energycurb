@@ -22,15 +22,22 @@ what answers.
   one extra per circuit flagged bi-directional). The channel count is
   auto-detected from the first samples POST:
   - **Power** (`device_class: power`, `state_class: measurement`, unit `W`)
-    — instantaneous draw, derived as `w × 3600 / p`, where `p` is the
-    sample's own period field (1 second in current firmware).
+    — instantaneous draw. Source depends on the configured **Sample
+    period**: at 1 s, derived from raw 1-second samples as
+    `w × 3600`; at any other period, taken directly from the hub's
+    1-minute aggregate (whose `w` is already average watts), so power
+    updates once per minute.
   - **Energy** (`device_class: energy`, `state_class: total_increasing`,
-    unit `kWh`) — cumulative consumption. For non-bidirectional circuits
-    it's `Σ |w|`; for bi-directional circuits it's `Σ max(w, 0)` so the
-    counter stays monotonic. Persisted across restarts so long-term
-    statistics and the Energy dashboard work out of the box.
+    unit `kWh`) — cumulative consumption, accumulated *only* from the
+    1-minute aggregate samples (one Wh delta per minute = one HA
+    state-write per minute, no matter what the sample period is).
+    Per-minute Wh delta is `avg_w × 60 / 3600`; for non-bidirectional
+    circuits the absolute value is summed, for bi-directional circuits
+    only `max(avg_w, 0)` so the counter stays monotonic. Persisted
+    across restarts so long-term statistics and the Energy dashboard
+    work out of the box.
   - **Energy Production** (same device/state class, only created for
-    bi-directional circuits) — cumulative `Σ max(-w, 0)`, i.e. back-feed.
+    bi-directional circuits) — cumulative back-feed, `Σ max(-avg_w, 0) × 60 / 3600`.
 - Each hub appears as its own HA **device** identified by its serial.
 
 `iot_class` is `local_push` — data arrives on every hub sample (~every
@@ -182,22 +189,28 @@ followed by one section per detected channel:
 
 - **Sample period (seconds)** — integer, 1–60, default 1. Written into
   the generated hub-config.json as `sampling.sample_period_ms`
-  (`period × 1000`). Larger values *should* reduce POST frequency and
-  log volume at the cost of time resolution. **In practice only the
-  default 1-second value is known to work reliably** — other periods
-  appear to be ignored or mishandled by the streamer firmware. The
-  field is exposed because the underlying hub-config option exists;
-  leave it at `1` unless you have evidence your hub honors a different
-  value. The integration's power/energy math reads each sample's own
-  `p` field, so if a future firmware does honor a higher period the
-  scaling will follow automatically.
+  (`period × 1000`). In current firmware the streamer always emits
+  raw samples at 1 Hz regardless of this value, but the option also
+  controls **where the integration takes its power readings from**:
+  - `1` — power tracks the raw 1-second sample stream (live, ~1 Hz).
+  - `>1` — power tracks the hub's 1-minute aggregate stream (one
+    update per minute). Pick this if you don't need second-by-second
+    power on the dashboard and want to slash recorder churn.
 
-  Independently of the configured period, the hub also POSTs
-  time-averaged aggregate samples (1-min / 5-min / 1-hr / 1-day) to
-  the same endpoint — those are part of the streamer's offline-queue
-  backfill / cloud reporting and use a different unit convention for
-  `w`. The integration filters them out and only consumes raw 1-second
-  samples; aggregates are logged at debug and discarded.
+  **Energy always comes from the 1-minute aggregate**, regardless of
+  this setting — accumulating once per minute instead of once per
+  second is ~60× less recorder pressure with no impact on
+  long-term statistics or the Energy dashboard. The hub additionally
+  posts 5-minute / 1-hour / 1-day rollup aggregates; those are
+  rolled-up versions of the same 1-minute data, so the integration
+  drops them to avoid double-counting.
+
+  Note: 1-minute aggregates only carry the *average* signed watts,
+  so a bi-directional circuit that imports and exports in equal
+  measure within a single minute averages to zero and contributes no
+  Wh delta in either direction. Slow-moving feeds (typical solar /
+  grid mains) are unaffected; fast-flipping loads lose sub-minute
+  fidelity in the energy counters.
 
 **Per circuit** (A1 … C6)
 

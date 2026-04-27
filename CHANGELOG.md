@@ -24,7 +24,11 @@ loosely based on [Keep a Changelog](https://keepachangelog.com/).
   form auto-sizes to match.
 - Per-hub **Sample period (seconds)** option, 1–60, default 1.
   Written into `sampling.sample_period_ms` on the next hub-config
-  fetch. **Only the 1 second option seems to work**
+  fetch, and also selects the integration's power-reading source:
+  `1` → live 1 Hz from raw samples, `>1` → once-per-minute from the
+  1-minute aggregate stream. The streamer firmware doesn't appear to
+  honor `sample_period_ms` itself in current builds, but the
+  integration-side switch works either way.
 - **Rogowski 80/100 A** clamp choice in the dropdown. Use it on bus
   bars, bundled service-entrance cable, tight enclosures, parallel
   conductors, or any feed where a split-core CT can't physically fit.
@@ -34,9 +38,24 @@ loosely based on [Keep a Changelog](https://keepachangelog.com/).
   stops logging failed POSTs.
 
 ### Changed
-- **Power calculation now divides by the configured sample period.**
-  Previously assumed a 1 s sampling interval and reported wrong
-  wattages for any other period (`P = w × 3600 / T`).
+- **Energy accumulation moved off the raw 1-second stream onto the
+  1-minute aggregate stream.** Energy sensors now write state once per
+  minute instead of once per second — roughly 60× less recorder
+  pressure with no impact on long-term statistics or the Energy
+  dashboard. Per-minute Wh delta is computed from the aggregate's
+  average watts as `avg_w × 60 / 3600`.
+- **Power-reading source is selectable** via the Sample period
+  option: `1` keeps the live 1 Hz update from the raw stream;
+  anything higher takes power from the 1-minute aggregate (one
+  update per minute) so users with bandwidth/log concerns can opt
+  out of second-by-second power without losing energy data.
+- **Mixed sample types are now distinguished by the top-level `p`
+  field.** Raw samples (`p == 1`, `w` in Wh/sec) feed power; 1-minute
+  aggregates (`p == 60`, `w` in average watts) feed energy and
+  optionally power. 5-minute / 1-hour / 1-day rollups are dropped to
+  avoid double-counting. Previously the integration treated every
+  sample as raw, which corrupted readings whenever an aggregate
+  arrived.
 - **Clamp dropdown labels** now include the Curb part number alongside
   the rating (`30 A (XIAMEN30)`, `Rogowski 80/100 A (ROGOWSKI80100)`,
   etc.) so they line up with what's printed in your `hub-config.json`
@@ -61,10 +80,18 @@ loosely based on [Keep a Changelog](https://keepachangelog.com/).
   yet support.
 
 ### Known limitations
-- **It appears that only specific sample periods work.** Use 1 second
-  unless you know that your hub needs a different value, or works with
-  a different value. This setting is provided only because it is an
-  option in the hub-config.json file.
+- **Bi-directional fidelity at sub-minute timescales is reduced.**
+  Energy is accumulated from the hub's 1-minute aggregate, which
+  carries only the minute's *average* signed watts. A circuit that
+  imports and exports in equal measure within a single minute will
+  average to zero and contribute no Wh delta in either direction.
+  Slow-moving feeds (typical solar/grid mains) are unaffected;
+  fast-flipping loads lose sub-minute fidelity in the energy counters.
+- **`sampling.sample_period_ms` may be ignored by the streamer
+  firmware.** The integration writes whatever you set, but the hub
+  appears to keep emitting raw samples at 1 Hz regardless. The
+  integration-side power-source switch (raw vs. 1-min aggregate) still
+  works because it keys off the sample's own period field.
 - **Lite-hub upgraders may have ghost entities.** If you ran the prior
   version against a Lite hub, the entity registry will have channels
   13–18 sitting unavailable. They aren't auto-cleaned; remove them
