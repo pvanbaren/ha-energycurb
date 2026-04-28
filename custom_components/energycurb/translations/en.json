@@ -62,6 +62,7 @@
     "clamp": {
       "options": {
         "100a": "100 A (XIAMEN100)",
+        "xiamen100thin": "100 A thin-profile (XIAMEN100THIN)",
         "50a": "50 A (XIAMEN50)",
         "30a": "30 A (XIAMEN30)",
         "rogowski80100": "Rogowski 80/100 A (ROGOWSKI80100)"

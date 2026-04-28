@@ -107,7 +107,7 @@ few seconds), not polled.
    default 1), then for each channel position the hub reports (the
    form auto-sizes to whatever the hub actually has — 18 for a
    standard 4-chip hub, 12 for a Lite 2-chip hub) set the clamp
-   (`XIAMEN100` / `XIAMEN50` / `XIAMEN30` / `ROGOWSKI80100`), voltage
+   (`XIAMEN100` / `XIAMEN100THIN` / `XIAMEN50` / `XIAMEN30` / `ROGOWSKI80100`), voltage
    (110V / 220V), inverted flag, and the bi-directional flag using your
    backup of the original `hub-config.json` as reference — match the
    `clamp_definition_id` and the sign/magnitude of the multipliers.
@@ -220,6 +220,11 @@ followed by one section per detected channel:
     sub-panels under ~40 A).
   - `XIAMEN100` — 100 A Xiamen split-core CT (mains feeders or large
     sub-panels in a typical residential install).
+  - `XIAMEN100THIN` — 100 A thin-profile Xiamen split-core CT (same
+    rating as `XIAMEN100`, lower-profile body for tight panel
+    enclosures or close-packed conductors). Distinct calibration
+    from `XIAMEN100` — pick the one that matches the
+    `clamp_definition_id` in your hub-config.json backup.
   - `ROGOWSKI80100` — 80/100 A Rogowski flexible coil. Use when a
     split-core CT can't physically fit around the conductor (large
     bus bars, bundled service-entrance cable, tight panel

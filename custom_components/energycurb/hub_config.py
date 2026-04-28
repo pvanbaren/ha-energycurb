@@ -19,6 +19,7 @@ from .const import (
     CLAMP_50A,
     CLAMP_100A,
     CLAMP_ROGOWSKI80100,
+    CLAMP_XIAMEN100THIN,
     CONF_CIRCUIT_BIDIRECTIONAL,
     CONF_CIRCUIT_CLAMP,
     CONF_CIRCUIT_INVERTED,
@@ -60,26 +61,31 @@ _DEFINITION_ID: dict[str, str] = {
     CLAMP_30A:           "XIAMEN30",
     CLAMP_50A:           "XIAMEN50",
     CLAMP_100A:          "XIAMEN100",
+    CLAMP_XIAMEN100THIN: "XIAMEN100THIN",
     CLAMP_ROGOWSKI80100: "ROGOWSKI80100",
 }
 
 _MULTIPLIERS: dict[str, dict[str, tuple[float, float, float]]] = {
-    #               (i_multiplier,            w_multiplier,   var_multiplier)
+    #               (i_multiplier,            w_multiplier,        var_multiplier)
     CLAMP_30A: {
-        VOLTAGE_110: (5.2290755588493e-06,    0.00026897918,  0.00026897918),
-        VOLTAGE_220: (1.0458151117699e-05,    0.00053795836,  0.00053795836),
+        VOLTAGE_110: (5.2290755588493e-06,    0.00026897918,       0.00026897918),
+        VOLTAGE_220: (1.0458151117699e-05,    0.00053795836,       0.00053795836),
     },
     CLAMP_50A: {
-        VOLTAGE_110: (8.73962e-06,            0.00044961108,  0.00044961108),
-        VOLTAGE_220: (1.747924e-05,           0.00089922216,  0.00089922216),
+        VOLTAGE_110: (8.73962e-06,            0.00044961108,       0.00044961108),
+        VOLTAGE_220: (1.747924e-05,           0.00089922216,       0.00089922216),
     },
     CLAMP_100A: {
-        VOLTAGE_110: (1.7609849656268e-05,    0.00091863534,  0.00091863534),
-        VOLTAGE_220: (3.5219699312536e-05,    0.00183727068,  0.00183727068),
+        VOLTAGE_110: (1.7609849656268e-05,    0.00091863534,       0.00091863534),
+        VOLTAGE_220: (3.5219699312536e-05,    0.00183727068,       0.00183727068),
+    },
+    CLAMP_XIAMEN100THIN: {
+        VOLTAGE_110: (2.6043642705761e-05,    0.001354132531359,   0.001354132531359),
+        VOLTAGE_220: (5.2087285411522e-05,    0.002708265062718,   0.002708265062718),
     },
     CLAMP_ROGOWSKI80100: {
-        VOLTAGE_110: (7.06e-05,               0.0038,         0.0038),
-        VOLTAGE_220: (1.412e-04,              0.0076,         0.0076),
+        VOLTAGE_110: (7.06e-05,               0.0038,              0.0038),
+        VOLTAGE_220: (1.412e-04,              0.0076,              0.0076),
     },
 }
 
