@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import zlib
 from typing import Any
 
@@ -120,6 +121,17 @@ class CurbHttpServer:
         # we see. Persisted alongside the energy counters so a Lite hub
         # gets the right number of sensors recreated across HA restarts.
         self.chip_channels: dict[str, list[int]] = {}
+        # Stable hub-config revision for this server's lifetime. The
+        # streamer firmware re-downloads /v3/hub_config whenever the
+        # `revision` field is different from its locally-cached value,
+        # so handing out a fresh `int(time.time())` on every poll (every
+        # 5 minutes) caused a perpetual re-download loop. Capturing one
+        # timestamp at construction and reusing it stops that — and
+        # since options changes trigger a full reload of this server
+        # (see _async_options_updated in __init__.py), the next
+        # construction picks up a new revision automatically when the
+        # user saves new settings. Nothing to plumb on the save path.
+        self._revision = int(time.time())
         self._energy_store: Store = Store(
             hass, ENERGY_STORAGE_VERSION, _energy_storage_key(entry)
         )
@@ -318,6 +330,7 @@ class CurbHttpServer:
             base_url=base_url,
             sample_period_s=self.sample_period_for(serial),
             chip_channels=self.chip_channels_for(serial),
+            revision=self._revision,
         )
         return web.Response(
             status=200,
