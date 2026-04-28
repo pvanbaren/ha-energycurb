@@ -311,10 +311,18 @@ class CurbHttpServer:
                 skipped,
             )
 
+        # Tell the hub how many messages are waiting for it on the
+        # server-side queue. The streamer uses this as a hint to drain
+        # /v3/messages without waiting for its regular ~5s poll, so a
+        # config-push message saved via the options flow takes effect
+        # within one samples cycle (~1s) instead of up to 5s.
+        queue_len = len(
+            _pending_messages(self.hass, self.entry).get(serial, [])
+        )
         return web.Response(
             status=200,
             content_type="application/json",
-            text='{"messages":0}',
+            text=json.dumps({"messages": queue_len}),
         )
 
     async def _handle_hub_config(self, request: web.Request) -> web.Response:
@@ -372,13 +380,24 @@ class CurbHttpServer:
         return web.Response(status=201)
 
     async def _handle_diagnostics(self, request: web.Request) -> web.Response:
-        # Stub: any method/path on /v3/diagnostics gets the same 200 +
-        # `{"messages":0}` body the samples endpoint returns, so the
-        # hub's diagnostics POSTs don't show up as failed in streamer.log.
+        # Stub: any method/path on /v3/diagnostics gets a 200 with the
+        # same `{"messages": N}` body the samples endpoint returns, so
+        # the hub's diagnostics POSTs don't show up as failed in
+        # streamer.log. When the URL carries a serial, report the real
+        # queue depth for it (matching the samples-endpoint hint); the
+        # serialless route falls back to 0 since we have no way to
+        # know which queue to count.
+        serial = request.match_info.get("serial")
+        if serial:
+            queue_len = len(
+                _pending_messages(self.hass, self.entry).get(serial, [])
+            )
+        else:
+            queue_len = 0
         return web.Response(
             status=200,
             content_type="application/json",
-            text='{"messages":0}',
+            text=json.dumps({"messages": queue_len}),
         )
 
     def _apply_sample(
