@@ -22,22 +22,24 @@ what answers.
   one extra per circuit flagged bi-directional). The channel count is
   auto-detected from the first samples POST:
   - **Power** (`device_class: power`, `state_class: measurement`, unit `W`)
-    — average draw over the sample's period, derived as `w × 3600 / p`
-    where `w` is the sample's signed Wh and `p` is its period in
-    seconds. Source depends on the configured **Sample period**: at
-    1 s, power tracks raw 1-second samples (live at 1 Hz); at any
-    other period, power tracks the hub's 1-minute aggregate (one
-    update per minute).
+    — average draw over the sample's period, derived as `w × 3600`
+    where `w` is the sample's signed average Wh/sec. Source depends
+    on the configured **Sample period**: at 1 s, power tracks raw
+    1-second samples (live at 1 Hz); at any other period, power
+    tracks the hub's 1-minute aggregate (one update per minute).
   - **Energy** (`device_class: energy`, `state_class: total_increasing`,
     unit `kWh`) — cumulative consumption, accumulated *only* from the
     1-minute aggregate samples (one Wh delta per minute = one HA
     state-write per minute, no matter what the sample period is).
-    For non-bidirectional circuits the absolute Wh value is summed,
-    `Σ |w|`; for bi-directional circuits only `Σ max(w, 0)` so the
-    counter stays monotonic. Persisted across restarts so long-term
-    statistics and the Energy dashboard work out of the box.
+    Per-minute Wh delta is `w × p` (the average rate times the
+    period). For non-bidirectional circuits the absolute value is
+    summed, `Σ |w × p|`; for bi-directional circuits only
+    `Σ max(w × p, 0)` so the counter stays monotonic. Persisted
+    across restarts so long-term statistics and the Energy dashboard
+    work out of the box.
   - **Energy Production** (same device/state class, only created for
-    bi-directional circuits) — cumulative back-feed, `Σ max(-w, 0)`.
+    bi-directional circuits) — cumulative back-feed,
+    `Σ max(-w × p, 0)`.
 - Each hub appears as its own HA **device** identified by its serial.
 
 `iot_class` is `local_push` — data arrives on every hub sample (~every
