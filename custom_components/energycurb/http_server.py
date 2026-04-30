@@ -146,7 +146,8 @@ class CurbHttpServer:
         # Storage shape evolved across versions without a version bump:
         #   pre-bidirectional : flat {serial: {idx: wh}} of |w| totals
         #   pre-multi-model   : {"energy","production": {serial: {idx: wh}}}
-        #   current           : adds {"chip_channels": {serial: [n,...]}}
+        #   pre-live-power    : adds {"chip_channels": {serial: [n,...]}}
+        #   current           : adds {"power": {serial: {idx: w}}}
         # Detect by the top-level keys and map flat data into `energy`.
         stored = await self._energy_store.async_load()
         if stored:
@@ -154,13 +155,16 @@ class CurbHttpServer:
                 energy_data = stored.get("energy", {})
                 production_data = stored.get("production", {})
                 chip_data = stored.get("chip_channels", {})
+                power_data = stored.get("power", {})
             else:
                 energy_data = stored
                 production_data = {}
                 chip_data = {}
+                power_data = {}
             for target, data in (
                 (self.energy_wh, energy_data),
                 (self.energy_wh_production, production_data),
+                (self.latest, power_data),
             ):
                 for serial, circuits in data.items():
                     target[serial] = {
@@ -520,8 +524,16 @@ class CurbHttpServer:
             )
 
     def _energy_snapshot(self) -> dict[str, Any]:
+        # `power` is included so a planned reload (e.g. options change
+        # via the Live Power Readings switch or the options flow) can
+        # restore the last-known W readings post-reload, keeping the
+        # power sensors continuously available rather than flipping to
+        # `unavailable` until the next sample arrives. The values may
+        # be stale across an unplanned crash, but that's no worse than
+        # the prior behavior (sensors unavailable until next POST).
         return {
             "energy": self.energy_wh,
             "production": self.energy_wh_production,
             "chip_channels": self.chip_channels,
+            "power": self.latest,
         }
