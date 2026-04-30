@@ -28,7 +28,7 @@ from .const import (
     DOMAIN,
     SIGNAL_NEW_DEVICE,
 )
-from .http_server import CurbHttpServer
+from .http_server import CurbHttpServer, enqueue_hub_message
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -97,11 +97,23 @@ class CurbLivePowerSwitch(SwitchEntity):
         devices = new_options.setdefault(CONF_DEVICES, {})
         devices.setdefault(self._serial, {})
         devices[self._serial][CONF_SAMPLE_PERIOD_S] = period_s
+        # Tell the hub to re-fetch hub-config on its next message
+        # poll instead of waiting up to 5 minutes for the periodic
+        # refresh. Without this, the hub's internal sampler can stay
+        # on the old sample_period_ms cadence (so e.g. 1-minute mode
+        # → live-mode keeps producing samples every 60s for up to a
+        # few minutes, leaving power sensors looking frozen). Mirrors
+        # what the options-flow Save button does.
+        enqueue_hub_message(
+            self.hass, self._entry, self._serial, {"type": "config"}
+        )
         # async_update_entry triggers the options-update listener
         # registered in __init__.async_setup_entry, which reloads the
         # integration. The switch is recreated post-reload with is_on
-        # derived from the saved options, so no explicit state push
-        # needed here.
+        # derived from the saved options. The pending hub-message
+        # queue lives in hass.data (not on the server instance), so
+        # the enqueued config push above survives the reload and is
+        # delivered when the hub's next /v3/messages poll arrives.
         self.hass.config_entries.async_update_entry(
             self._entry, options=new_options
         )
