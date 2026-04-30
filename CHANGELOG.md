@@ -4,63 +4,115 @@ All notable changes to this project are documented here. Versions
 follow [semantic versioning](https://semver.org/), and the format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.2.0] — 2026-04-29
+
+### Highlights
+- **New `Live Power Readings` switch** per Curb device — toggle the
+  power-update interval (1 second ↔ 1 minute) without opening the
+  options flow.
+
+### Added
+- `Live Power Readings` switch entity, attached to each hub device
+  in the Configuration section. Toggling it writes the same
+  `sample_period_s` field the options-flow dropdown writes (so the
+  two stay in sync) and pushes a `{"type": "config"}` hub message
+  so the new cadence takes effect within a few seconds rather than
+  waiting up to 5 minutes for the hub's periodic config poll.
+
+### Fixed
+- **Power sensors no longer flip to `unavailable` on a reload.** The
+  in-memory `latest` power store is now persisted alongside the
+  energy counters, so a planned reload (options save, switch
+  toggle, HA shutdown) restores the last-known W readings on the
+  next start.
+
+### Storage
+- Persistence file gained a `"power"` top-level key alongside
+  `"energy"` / `"production"` / `"chip_channels"`. Read path is
+  additive-tolerant, so a downgrade to 1.1.0 just drops the new
+  key and falls back to the prior "unavailable until next sample"
+  behavior.
+
+### Upgrade notes
+- The new switch appears as a Configuration entity on each hub
+  device, defaulting to ON (live mode = previous default behavior).
+
 ## [1.1.0] — 2026-04-26
 
 ### Highlights
 - **Lite (12-channel) hubs are now supported** alongside standard
-  18-channel hubs. The integration auto-detects the channel count from
-  the hub's first samples POST and creates the right number of sensors.
-- **Per-hub sample period** is now configurable from the options flow
-  (1–60 s). Power readings now scale correctly when the period is
-  longer than 1 s.
-- **New `ROGOWSKI80100` clamp option** for Rogowski flexible coils on
-  standard hubs' last two ADE chips (positions C1–C6).
+  18-channel hubs. The integration auto-detects the channel count
+  from the hub's first samples POST and creates the right number of
+  sensors.
+- **Power and energy now ride separate sample streams.** Energy
+  always accumulates from the hub's 1-minute aggregate (one HA
+  state-write per minute, ~60× less recorder load); power tracks
+  the raw 1 Hz stream by default, or the same aggregate when set to
+  per-minute mode.
+- **New clamp options:** `ROGOWSKI80100` (Rogowski flexible coil for
+  high-current / awkward feeds) and `XIAMEN100THIN` (thin-profile
+  100 A Xiamen CT, distinct calibration from `XIAMEN100`).
 - **`/v3/diagnostics` endpoint** is now answered (was returning 404,
   cluttering `streamer.log`).
+- **Hub no longer re-downloads `hub-config.json` every 5 minutes.**
+  The `revision` field is now stable per server lifetime; the
+  firmware only re-fetches when something has actually changed.
 
 ### Added
-- Auto-detect per-hub chip layout (`[6,6,3,3]` standard, `[6,6]` Lite)
-  from the first samples POST. Persisted across restarts; the options
-  form auto-sizes to match.
-- Per-hub **Sample period (seconds)** option, 1–60, default 1.
-  Written into `sampling.sample_period_ms` on the next hub-config
-  fetch, and also selects the integration's power-reading source:
-  `1` → live 1 Hz from raw samples, `>1` → once-per-minute from the
-  1-minute aggregate stream. The streamer firmware doesn't appear to
-  honor `sample_period_ms` itself in current builds, but the
-  integration-side switch works either way.
-- **Rogowski 80/100 A** clamp choice in the dropdown. Use it on bus
-  bars, bundled service-entrance cable, tight enclosures, parallel
-  conductors, or any feed where a split-core CT can't physically fit.
-  See the README for hub-position constraints.
-- `/v3/diagnostics` (and `/v3/diagnostics/{serial}`) now return
-  `200 {"messages":0}` — same shape as `/v3/samples` — so the hub
-  stops logging failed POSTs.
+- Auto-detect per-hub chip layout (`[6,6,3,3]` standard, `[6,6]`
+  Lite) from the first samples POST. Persisted across restarts; the
+  options form auto-sizes to match.
+- **Power update interval** option in the options flow — a 2-choice
+  dropdown (`1 second` / `1 minute`) selecting which sample stream
+  drives the power sensors. The chosen value is also written into
+  `sampling.sample_period_ms` (1000 or 60000) on the next
+  hub-config fetch, though the streamer firmware appears to ignore
+  it on most hubs.
+- `ROGOWSKI80100` clamp choice — Rogowski flexible coil for bus
+  bars, bundled service-entrance cable, tight panel enclosures,
+  parallel conductors, or any feed where a split-core CT can't
+  physically fit. See the README for hub-position constraints.
+- `XIAMEN100THIN` clamp choice — same 100 A rating as `XIAMEN100`,
+  thin-profile body, distinct calibration. Pick this when your
+  `hub-config.json` backup shows that ID. 220 V values are 2× the
+  110 V multipliers, matching the rest of the Xiamen family.
+- `/v3/diagnostics` (and `/v3/diagnostics/{serial}`) now return a
+  `200` with the same body shape as `/v3/samples`, so the hub stops
+  logging failed POSTs.
+- `/v3/samples/<serial>` and `/v3/diagnostics/<serial>` response
+  bodies now report the real outbound message-queue depth (replacing
+  the hardcoded `{"messages": 0}`). Hubs that honor this hint drain
+  the queue within one samples cycle (~1 s) instead of waiting up
+  to 5 s for their regular `/v3/messages` poll.
 
 ### Changed
-- **Energy accumulation moved off the raw 1-second stream onto the
-  1-minute aggregate stream.** Energy sensors now write state once per
-  minute instead of once per second — roughly 60× less recorder
+- **Energy accumulation moved off the raw 1 Hz stream onto the
+  1-minute aggregate stream.** Energy sensors now write state once
+  per minute instead of once per second — roughly 60× less recorder
   pressure with no impact on long-term statistics or the Energy
-  dashboard. The aggregate's `w` field is already the period's signed
-  Wh, so it's summed directly into the energy counters.
-- **Power-reading source is selectable** via the Sample period
-  option: `1` keeps the live 1 Hz update from the raw stream;
-  anything higher takes power from the 1-minute aggregate (one
-  update per minute) so users with bandwidth/log concerns can opt
-  out of second-by-second power without losing energy data.
+  dashboard. Per-minute Wh delta is `w × p`, where `w` is the
+  aggregate's signed average Wh/sec rate and `p` is its 60-second
+  period.
+- **Power-reading source is selectable** via the new dropdown:
+  `1 second` keeps live 1 Hz updates from the raw stream;
+  `1 minute` takes power from the 1-minute aggregate (one
+  state-write per minute) for users who want to slash recorder
+  load without losing energy data.
 - **Mixed sample types are now distinguished by the top-level `p`
-  field.** Raw samples (`p == 1`) feed power; 1-minute aggregates
-  (`p == 60`) feed energy and optionally power. Both carry `w` in Wh
-  over the period — the period only affects the Wh→W conversion.
-  5-minute / 1-hour / 1-day rollups are dropped to avoid
-  double-counting. Previously the integration treated every sample as
-  raw at fixed 1 s, which corrupted readings whenever an aggregate
-  arrived.
-- **Clamp dropdown labels** now include the Curb part number alongside
-  the rating (`30 A (XIAMEN30)`, `Rogowski 80/100 A (ROGOWSKI80100)`,
-  etc.) so they line up with what's printed in your `hub-config.json`
-  backup.
+  field.** Raw 1 s samples (`p == 1`) and 1-minute aggregates
+  (`p == 60`) both carry signed Wh/sec rates; power is derived as
+  `w × 3600` and energy delta as `w × p`. 5-minute / 1-hour / 1-day
+  rollups are dropped to avoid double-counting. Previously the
+  integration treated every sample as raw at fixed 1 s, which
+  corrupted readings whenever an aggregate arrived.
+- **`hub-config.json` `revision` is now stable** per server
+  lifetime, so the streamer only re-fetches the config when a
+  reload (options change, etc.) actually bumps it, instead of every
+  5-minute config poll.
+- **Clamp dropdown labels** now include the Curb part number
+  alongside the rating (`30 A (XIAMEN30)`,
+  `Rogowski 80/100 A (ROGOWSKI80100)`, etc.) so they line up with
+  what's printed in your `hub-config.json` backup.
 - **`DEFAULT_ENDPOINTS`** now include port `:8989`, matching the
   listener's default port and what the README has shown all along.
 - **`manifest.json` version** bumped to `1.1.0`.
