@@ -33,9 +33,17 @@ loosely based on [Keep a Changelog](https://keepachangelog.com/).
   key and falls back to the prior "unavailable until next sample"
   behavior.
 
+### Changed
+- **Default power update interval is now `1 minute`** (was
+  `1 second`). New installs default the Live Power Readings switch
+  to OFF and the dropdown to `1 minute`, trading second-by-second
+  live power for ~60× less recorder load. Existing installs that
+  saved `1 second` explicitly keep that choice.
+
 ### Upgrade notes
 - The new switch appears as a Configuration entity on each hub
-  device, defaulting to ON (live mode = previous default behavior).
+  device. New installs default to OFF (1-minute mode); installs that
+  previously saved a `sample_period_s` of `1` keep live mode.
 
 ## [1.1.0] — 2026-04-26
 

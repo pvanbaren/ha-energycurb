@@ -103,10 +103,12 @@ few seconds), not polled.
    `revision` field by one so the streamer re-reads the file on its
    next poll, then restart the hub (or just the `streamer` service).
 4. Open the integration's options flow (Settings → Devices & services
-   → Curb → Configure). Enter the hub's sample period (1–60 seconds;
-   default 1), then for each channel position the hub reports (the
-   form auto-sizes to whatever the hub actually has — 18 for a
-   standard 4-chip hub, 12 for a Lite 2-chip hub) set the clamp
+   → Curb → Configure). Pick the hub's power update interval
+   (`1 second` for live readings, `1 minute` to slash recorder
+   load — defaults to `1 minute`), then for each channel position
+   the hub reports (the form auto-sizes to whatever the hub actually
+   has — 18 for a standard 4-chip hub, 12 for a Lite 2-chip hub)
+   set the clamp
    (`XIAMEN100` / `XIAMEN100THIN` / `XIAMEN50` / `XIAMEN30` / `ROGOWSKI80100`), voltage
    (110V / 220V), inverted flag, and the bi-directional flag using your
    backup of the original `hub-config.json` as reference — match the
@@ -190,7 +192,7 @@ followed by one section per detected channel:
 **Per hub**
 
 - **Power update interval** — `1 second` or `1 minute` (default
-  `1 second`). Sets how often the power sensors refresh in Home
+  `1 minute`). Sets how often the power sensors refresh in Home
   Assistant. Energy totals always update once per minute regardless,
   and the hub's internal sampling rate is unchanged (the firmware
   ignores `sampling.sample_period_ms` and always emits at 1 Hz).
