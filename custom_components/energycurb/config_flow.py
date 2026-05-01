@@ -33,16 +33,20 @@ from .const import (
     CONF_CIRCUIT_NAME,
     CONF_CIRCUIT_VOLTAGE,
     CONF_DEVICES,
-    CONF_EXTRA_SENSORS,
     CONF_HOST,
     CONF_PORT,
     CONF_SAMPLE_PERIOD_S,
     CONF_SERIAL,
-    DEFAULT_EXTRA_SENSORS,
+    CONF_SHOW_CURRENT,
+    CONF_SHOW_POWER_FACTOR,
+    CONF_SHOW_REACTIVE_POWER,
     DEFAULT_HOST,
     DEFAULT_NUM_CIRCUITS,
     DEFAULT_PORT,
     DEFAULT_SAMPLE_PERIOD_S,
+    DEFAULT_SHOW_CURRENT,
+    DEFAULT_SHOW_POWER_FACTOR,
+    DEFAULT_SHOW_REACTIVE_POWER,
     DOMAIN,
     VOLTAGE_CHOICES,
 )
@@ -201,19 +205,17 @@ class CurbOptionsFlow(OptionsFlow):
             return str(DEFAULT_SAMPLE_PERIOD_S)
         return "1" if n <= 1 else "60"
 
-    def _current_extra_sensors(self) -> bool:
+    def _current_flag(self, key: str, default: bool) -> bool:
         assert self._serial is not None
         devices = self._entry.options.get(CONF_DEVICES, {})
-        return bool(
-            devices.get(self._serial, {}).get(
-                CONF_EXTRA_SENSORS, DEFAULT_EXTRA_SENSORS
-            )
-        )
+        return bool(devices.get(self._serial, {}).get(key, default))
 
     def _circuits_schema(
         self,
         sample_period_s: str,
-        extra_sensors: bool,
+        show_current: bool,
+        show_power_factor: bool,
+        show_reactive_power: bool,
         defaults: list[dict[str, Any]],
     ) -> vol.Schema:
         fields: dict[Any, Any] = {
@@ -227,7 +229,13 @@ class CurbOptionsFlow(OptionsFlow):
                 )
             ),
             vol.Required(
-                CONF_EXTRA_SENSORS, default=extra_sensors
+                CONF_SHOW_CURRENT, default=show_current
+            ): bool,
+            vol.Required(
+                CONF_SHOW_POWER_FACTOR, default=show_power_factor
+            ): bool,
+            vol.Required(
+                CONF_SHOW_REACTIVE_POWER, default=show_reactive_power
             ): bool,
         }
         for i, ch in enumerate(defaults):
@@ -285,8 +293,14 @@ class CurbOptionsFlow(OptionsFlow):
             device_entry[CONF_SAMPLE_PERIOD_S] = max(
                 1, int(round(float(user_input[CONF_SAMPLE_PERIOD_S])))
             )
-            device_entry[CONF_EXTRA_SENSORS] = bool(
-                user_input[CONF_EXTRA_SENSORS]
+            device_entry[CONF_SHOW_CURRENT] = bool(
+                user_input[CONF_SHOW_CURRENT]
+            )
+            device_entry[CONF_SHOW_POWER_FACTOR] = bool(
+                user_input[CONF_SHOW_POWER_FACTOR]
+            )
+            device_entry[CONF_SHOW_REACTIVE_POWER] = bool(
+                user_input[CONF_SHOW_REACTIVE_POWER]
             )
 
             # Tell the hub to fetch the new hub-config.json on its next
@@ -305,7 +319,13 @@ class CurbOptionsFlow(OptionsFlow):
             step_id="circuits",
             data_schema=self._circuits_schema(
                 self._current_sample_period(),
-                self._current_extra_sensors(),
+                self._current_flag(CONF_SHOW_CURRENT, DEFAULT_SHOW_CURRENT),
+                self._current_flag(
+                    CONF_SHOW_POWER_FACTOR, DEFAULT_SHOW_POWER_FACTOR
+                ),
+                self._current_flag(
+                    CONF_SHOW_REACTIVE_POWER, DEFAULT_SHOW_REACTIVE_POWER
+                ),
                 self._current_circuits(),
             ),
             description_placeholders={"serial": self._serial},

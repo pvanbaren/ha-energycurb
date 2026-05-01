@@ -1,8 +1,11 @@
 """Sensor platform — power + energy (+ production for bidirectional) sensors per Curb hub circuit.
 
-When the per-hub Extra Electrical Sensors switch is on, we also expose
-per-circuit current / power factor / reactive power and per-phase
-voltage / frequency.
+Per-phase voltage and frequency are always exposed (one per chip with
+a real voltage reference). Per-circuit current, power factor, and
+reactive power are each gated on their own checkbox in the options
+flow — one flag per quantity rather than a single all-or-nothing
+toggle, so users who only care about (e.g.) current can opt in
+without tripling the entity count.
 """
 from __future__ import annotations
 
@@ -50,7 +53,9 @@ async def async_setup_entry(
     def _add_device(serial: str) -> None:
         entities: list[SensorEntity] = []
         circuits = server.circuits_for(serial)
-        extras = server.extra_sensors_enabled(serial)
+        show_current = server.show_current(serial)
+        show_power_factor = server.show_power_factor(serial)
+        show_reactive_power = server.show_reactive_power(serial)
         for i in range(server.num_circuits_for(serial)):
             entities.append(CurbCircuitPowerSensor(server, serial, i))
             entities.append(CurbCircuitEnergySensor(server, serial, i))
@@ -58,18 +63,21 @@ async def async_setup_entry(
                 entities.append(
                     CurbCircuitEnergyProductionSensor(server, serial, i)
                 )
-            if extras:
+            if show_current:
                 entities.append(CurbCircuitCurrentSensor(server, serial, i))
+            if show_power_factor:
                 entities.append(
                     CurbCircuitPowerFactorSensor(server, serial, i)
                 )
+            if show_reactive_power:
                 entities.append(
                     CurbCircuitReactivePowerSensor(server, serial, i)
                 )
-        if extras:
-            for chip_idx in server.voltage_chip_indices_for(serial):
-                entities.append(CurbHubVoltageSensor(server, serial, chip_idx))
-                entities.append(CurbHubFrequencySensor(server, serial, chip_idx))
+        # Voltage and frequency are always-on — one per chip that has a
+        # real voltage reference (filters out floating-pin chips).
+        for chip_idx in server.voltage_chip_indices_for(serial):
+            entities.append(CurbHubVoltageSensor(server, serial, chip_idx))
+            entities.append(CurbHubFrequencySensor(server, serial, chip_idx))
         async_add_entities(entities)
 
     entry.async_on_unload(

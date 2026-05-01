@@ -19,11 +19,15 @@ from .const import (
     CONF_CIRCUITS,
     CONF_CIRCUIT_BIDIRECTIONAL,
     CONF_DEVICES,
-    CONF_EXTRA_SENSORS,
     CONF_SAMPLE_PERIOD_S,
+    CONF_SHOW_CURRENT,
+    CONF_SHOW_POWER_FACTOR,
+    CONF_SHOW_REACTIVE_POWER,
     DEFAULT_CHIP_CHANNELS,
-    DEFAULT_EXTRA_SENSORS,
     DEFAULT_SAMPLE_PERIOD_S,
+    DEFAULT_SHOW_CURRENT,
+    DEFAULT_SHOW_POWER_FACTOR,
+    DEFAULT_SHOW_REACTIVE_POWER,
     DOMAIN,
     SIGNAL_NEW_DEVICE,
     SIGNAL_UPDATE_FMT,
@@ -114,8 +118,10 @@ class CurbHttpServer:
         # filters out the floating voltage pin on chips without a
         # transformer (chips C/D on standard 4-chip hubs read ~0.3 V).
         # Per-channel RMS current, power factor, and reactive power
-        # come straight from the channel dict; surfacing them as
-        # entities is gated by the per-hub CONF_EXTRA_SENSORS toggle.
+        # come straight from the channel dict; surfacing each one as
+        # entities is gated by its own per-hub options-flow checkbox
+        # (CONF_SHOW_CURRENT / CONF_SHOW_POWER_FACTOR /
+        # CONF_SHOW_REACTIVE_POWER).
         self.latest_voltage: dict[str, dict[int, float]] = {}
         self.latest_frequency: dict[str, dict[int, float]] = {}
         self.latest_current: dict[str, dict[int, float]] = {}
@@ -284,13 +290,25 @@ class CurbHttpServer:
         except (TypeError, ValueError):
             return DEFAULT_SAMPLE_PERIOD_S
 
-    def extra_sensors_enabled(self, serial: str) -> bool:
-        """Whether to expose V / Hz / I / PF / VAR sensors for `serial`."""
+    def _device_flag(
+        self, serial: str, key: str, default: bool
+    ) -> bool:
         devices = self.entry.options.get(CONF_DEVICES, {})
-        return bool(
-            devices.get(serial, {}).get(
-                CONF_EXTRA_SENSORS, DEFAULT_EXTRA_SENSORS
-            )
+        return bool(devices.get(serial, {}).get(key, default))
+
+    def show_current(self, serial: str) -> bool:
+        return self._device_flag(
+            serial, CONF_SHOW_CURRENT, DEFAULT_SHOW_CURRENT
+        )
+
+    def show_power_factor(self, serial: str) -> bool:
+        return self._device_flag(
+            serial, CONF_SHOW_POWER_FACTOR, DEFAULT_SHOW_POWER_FACTOR
+        )
+
+    def show_reactive_power(self, serial: str) -> bool:
+        return self._device_flag(
+            serial, CONF_SHOW_REACTIVE_POWER, DEFAULT_SHOW_REACTIVE_POWER
         )
 
     def voltage_chip_indices_for(self, serial: str) -> list[int]:

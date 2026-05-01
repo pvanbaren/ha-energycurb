@@ -31,7 +31,9 @@ CONF_DEVICES = "devices"
 CONF_CIRCUITS = "circuits"
 CONF_SERIAL = "serial"
 CONF_SAMPLE_PERIOD_S = "sample_period_s"
-CONF_EXTRA_SENSORS = "extra_sensors"
+CONF_SHOW_CURRENT = "show_current"
+CONF_SHOW_POWER_FACTOR = "show_power_factor"
+CONF_SHOW_REACTIVE_POWER = "show_reactive_power"
 CONF_CIRCUIT_NAME = "name"
 CONF_CIRCUIT_CLAMP = "clamp"
 CONF_CIRCUIT_VOLTAGE = "voltage"
@@ -39,7 +41,9 @@ CONF_CIRCUIT_INVERTED = "inverted"
 CONF_CIRCUIT_BIDIRECTIONAL = "bidirectional"
 
 DEFAULT_SAMPLE_PERIOD_S = 60
-DEFAULT_EXTRA_SENSORS = False
+DEFAULT_SHOW_CURRENT = False
+DEFAULT_SHOW_POWER_FACTOR = False
+DEFAULT_SHOW_REACTIVE_POWER = False
 
 # A standard 4-chip hub wires voltage transformers only to chips A and
 # B; chips C and D have a floating voltage pin that reads as a few
