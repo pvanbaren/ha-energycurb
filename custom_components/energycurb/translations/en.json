@@ -27,10 +27,12 @@
         "title": "Circuit configuration - {serial}",
         "description": "Each group below is one physical circuit position (A1–C6 on a standard 4-chip hub, A1–B6 on a Lite 2-chip hub). Assign a name, current clamp, voltage, and whether the clamp is inverted. The hub-config.json served at /v3/hub_config/{serial} is generated from these values.",
         "data": {
-          "sample_period_s": "Power update interval"
+          "sample_period_s": "Power update interval",
+          "extra_sensors": "Extra electrical sensors"
         },
         "data_description": {
-          "sample_period_s": "How often the power sensors refresh in HA. '1 second' is live (raw 1 Hz stream); '1 minute' refreshes from the hub's per-minute aggregate (~60x less recorder load). Energy totals always accumulate per minute regardless of this setting."
+          "sample_period_s": "How often the power sensors refresh in HA. '1 second' is live (raw 1 Hz stream); '1 minute' refreshes from the hub's per-minute aggregate (~60x less recorder load). Energy totals always accumulate per minute regardless of this setting.",
+          "extra_sensors": "Adds per-circuit current / power factor / reactive power and per-phase voltage / frequency entities. Triples the entity count, so leave off unless you actually need them."
         },
         "sections": {
           "c1":  {"name": "A1", "data": {"name": "Name", "clamp": "Clamp", "voltage": "Voltage", "inverted": "Inverted", "bidirectional": "Bi-directional"}},

@@ -1,14 +1,12 @@
-"""Switch platform — per-hub configuration toggles.
+"""Switch platform — Live Power Readings toggle per Curb hub.
 
-* Live Power Readings — power readings update at 1 Hz vs once per minute.
-* Extra Electrical Sensors — exposes per-circuit current / power factor /
-  reactive power and per-phase voltage / frequency entities.
+ON  → power readings update at 1 Hz from the raw samples stream.
+OFF → power readings update once per minute from the 1-minute aggregate.
 
-Both toggles write into entry.options and rely on the existing
-options-update listener to reload the integration. The Live Power
-toggle additionally enqueues a hub-config push so the streamer picks up
-the new sample_period_ms within ~1s instead of waiting up to 5 minutes
-for its periodic config refresh.
+Mirrors the 'Power update interval' dropdown in the options flow:
+toggling the switch writes the same `sample_period_s` field
+(`1` or `60`) into entry.options that the dropdown does, so either
+surface stays in sync with the other.
 """
 from __future__ import annotations
 
@@ -25,9 +23,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
     CONF_DEVICES,
-    CONF_EXTRA_SENSORS,
     CONF_SAMPLE_PERIOD_S,
-    DEFAULT_EXTRA_SENSORS,
     DEFAULT_SAMPLE_PERIOD_S,
     DOMAIN,
     SIGNAL_NEW_DEVICE,
@@ -51,12 +47,7 @@ async def async_setup_entry(
 
     @callback
     def _add_device(serial: str) -> None:
-        async_add_entities(
-            [
-                CurbLivePowerSwitch(entry, serial),
-                CurbExtraSensorsSwitch(entry, serial),
-            ]
-        )
+        async_add_entities([CurbLivePowerSwitch(entry, serial)])
 
     entry.async_on_unload(
         async_dispatcher_connect(hass, SIGNAL_NEW_DEVICE, _add_device)
@@ -123,62 +114,6 @@ class CurbLivePowerSwitch(SwitchEntity):
         # queue lives in hass.data (not on the server instance), so
         # the enqueued config push above survives the reload and is
         # delivered when the hub's next /v3/messages poll arrives.
-        self.hass.config_entries.async_update_entry(
-            self._entry, options=new_options
-        )
-
-
-class CurbExtraSensorsSwitch(SwitchEntity):
-    """Toggle the per-circuit I/PF/VAR + per-phase V/Hz sensors.
-
-    The hub already sends these fields on every samples POST, so this
-    is purely an HA-side filter on which entities get created. Toggling
-    triggers an integration reload so sensor.py's setup runs again with
-    the new flag value.
-    """
-
-    _attr_has_entity_name = True
-    _attr_name = "Extra Electrical Sensors"
-    _attr_should_poll = False
-    _attr_entity_category = EntityCategory.CONFIG
-    _attr_icon = "mdi:transmission-tower"
-
-    def __init__(self, entry: ConfigEntry, serial: str) -> None:
-        self._entry = entry
-        self._serial = serial
-        self._attr_unique_id = f"curb_{serial}_extra_sensors"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, serial)},
-            name=f"Curb {serial}",
-            manufacturer="Curb",
-            model="Energy Monitor",
-        )
-
-    @property
-    def is_on(self) -> bool:
-        devices = self._entry.options.get(CONF_DEVICES, {})
-        return bool(
-            devices.get(self._serial, {}).get(
-                CONF_EXTRA_SENSORS, DEFAULT_EXTRA_SENSORS
-            )
-        )
-
-    async def async_turn_on(self, **kwargs) -> None:
-        self._set(True)
-
-    async def async_turn_off(self, **kwargs) -> None:
-        self._set(False)
-
-    def _set(self, enabled: bool) -> None:
-        new_options = copy.deepcopy(dict(self._entry.options))
-        devices = new_options.setdefault(CONF_DEVICES, {})
-        devices.setdefault(self._serial, {})
-        devices[self._serial][CONF_EXTRA_SENSORS] = enabled
-        # Reload via the options-update listener — the new entities are
-        # created on the next pass through sensor.async_setup_entry.
-        # Disabled entities aren't auto-removed from the entity
-        # registry; they'll show as `unavailable` until the user
-        # deletes them.
         self.hass.config_entries.async_update_entry(
             self._entry, options=new_options
         )

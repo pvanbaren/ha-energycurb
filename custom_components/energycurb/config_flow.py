@@ -33,10 +33,12 @@ from .const import (
     CONF_CIRCUIT_NAME,
     CONF_CIRCUIT_VOLTAGE,
     CONF_DEVICES,
+    CONF_EXTRA_SENSORS,
     CONF_HOST,
     CONF_PORT,
     CONF_SAMPLE_PERIOD_S,
     CONF_SERIAL,
+    DEFAULT_EXTRA_SENSORS,
     DEFAULT_HOST,
     DEFAULT_NUM_CIRCUITS,
     DEFAULT_PORT,
@@ -199,9 +201,19 @@ class CurbOptionsFlow(OptionsFlow):
             return str(DEFAULT_SAMPLE_PERIOD_S)
         return "1" if n <= 1 else "60"
 
+    def _current_extra_sensors(self) -> bool:
+        assert self._serial is not None
+        devices = self._entry.options.get(CONF_DEVICES, {})
+        return bool(
+            devices.get(self._serial, {}).get(
+                CONF_EXTRA_SENSORS, DEFAULT_EXTRA_SENSORS
+            )
+        )
+
     def _circuits_schema(
         self,
         sample_period_s: str,
+        extra_sensors: bool,
         defaults: list[dict[str, Any]],
     ) -> vol.Schema:
         fields: dict[Any, Any] = {
@@ -214,6 +226,9 @@ class CurbOptionsFlow(OptionsFlow):
                     translation_key="sample_period",
                 )
             ),
+            vol.Required(
+                CONF_EXTRA_SENSORS, default=extra_sensors
+            ): bool,
         }
         for i, ch in enumerate(defaults):
             sub = vol.Schema(
@@ -263,12 +278,15 @@ class CurbOptionsFlow(OptionsFlow):
             new_options = copy.deepcopy(dict(self._entry.options))
             devices = new_options.setdefault(CONF_DEVICES, {})
             # Merge into the existing per-device dict so unrelated keys
-            # set by other surfaces (the Live Power Readings and Extra
-            # Electrical Sensors switches) survive a circuits-form save.
+            # set by another surface (the Live Power Readings switch)
+            # survive a circuits-form save.
             device_entry = devices.setdefault(self._serial, {})
             device_entry[CONF_CIRCUITS] = circuits
             device_entry[CONF_SAMPLE_PERIOD_S] = max(
                 1, int(round(float(user_input[CONF_SAMPLE_PERIOD_S])))
+            )
+            device_entry[CONF_EXTRA_SENSORS] = bool(
+                user_input[CONF_EXTRA_SENSORS]
             )
 
             # Tell the hub to fetch the new hub-config.json on its next
@@ -287,6 +305,7 @@ class CurbOptionsFlow(OptionsFlow):
             step_id="circuits",
             data_schema=self._circuits_schema(
                 self._current_sample_period(),
+                self._current_extra_sensors(),
                 self._current_circuits(),
             ),
             description_placeholders={"serial": self._serial},
