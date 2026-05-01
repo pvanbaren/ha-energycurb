@@ -4,6 +4,86 @@ All notable changes to this project are documented here. Versions
 follow [semantic versioning](https://semver.org/), and the format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.0] — 2026-05-01
+
+### Highlights
+- **New per-phase Voltage and Frequency sensors**, one each per ADE
+  chip that has a real voltage reference. Two pairs on hubs that wire
+  voltage only to chips A and B; four pairs on hubs that wire all
+  four chips. Lite 2-chip hubs get two pairs. No opt-in required —
+  they appear on the next samples POST.
+- **Opt-in per-circuit Current / Power Factor / Reactive Power
+  sensors**, each gated by its own checkbox in the options flow. The
+  hub already sends these fields on every POST; we just choose
+  whether to surface them as entities.
+- **Power readings on chips C and D now report a sensible value on
+  hubs where those chips are unwired**, instead of being stuck at 0.
+  Some 4-chip hub variants don't connect voltage transformers to
+  chips 3 and 4; others do. The fix kicks in per-chip, only when the
+  chip's voltage actually reads low (< 10 V), so hubs that wire all
+  four are unchanged.
+
+### Added
+- `Voltage` and `Frequency` sensors per phase, attached to each hub
+  device and named `Voltage A` / `Voltage B` / … (banks-of-letters
+  convention matches the per-circuit naming). One pair per ADE chip
+  that has a real voltage reference. Chips whose `v` reads below
+  10 V are treated as having no voltage reference and get no V/Hz
+  sensor — so on hub variants that don't wire voltage to chips 3 and
+  4 you'll see two pairs (A/B); on hubs that wire all four chips
+  you'll see four pairs (A–D). Lite 2-chip hubs always show two
+  pairs.
+- `Current`, `Power Factor`, and `Reactive Power` sensors per circuit
+  (one of each), each gated by its own checkbox. Power factor is
+  signed −1…1 (raw, no percentage scaling); reactive power is in
+  `var`; current is in `A`.
+- Three new checkboxes in the options-flow circuits step, sitting
+  directly under the Power update interval selector: **Show
+  Current**, **Show Power Factor**, **Show Reactive Power**. All
+  default OFF.
+
+### Fixed
+- **Power and energy no longer stick at 0 on chips that aren't wired
+  to a voltage transformer.** Some 4-chip hub variants only physically
+  wire voltage transformers to chips A and B (chips C and D share
+  those phases internally but have no voltage pin); other 4-chip
+  variants wire all four. On the unwired-chip variants, the hub
+  computes `V · I · cos φ` with `V ≈ 0` and reports `w = 0` on chips
+  C/D regardless of load. We now substitute `w = V_neighbor × I /
+  3600` on any chip whose `v` reads below 10 V, where `V_neighbor` is
+  the chip two positions earlier (chip C piggybacks on phase A, chip
+  D on phase B — matching the Curb hardware). The substitution is
+  per-chip and threshold-driven, so hubs that *do* wire all four
+  chips are completely unaffected. Lite 2-chip hubs (always fully
+  wired) are unaffected as well. Caveat: the substitution is unsigned
+  (current is RMS), so bidirectional circuits on a substituted chip
+  can only register consumption, not export.
+- **Options-flow circuit save no longer clobbers other settings on
+  the same device.** The `circuits` step now merges into the existing
+  per-device options entry instead of overwriting it, so adjacent
+  fields written by other surfaces (e.g. the Live Power Readings
+  switch) survive a circuits-form save.
+
+### Storage
+- Persistence file gained five new top-level keys (`voltage`,
+  `frequency`, `current`, `power_factor`, `reactive_power`), each
+  shaped `{serial: {idx: value}}`. Read path is additive-tolerant;
+  downgrading to 1.2.0 just drops them.
+
+### Upgrade notes
+- Voltage and Frequency sensors appear automatically on the next
+  POST — one pair per ADE chip whose voltage pin reads above 10 V.
+  On 4-chip hub variants that only wire chips A and B, that's two
+  pairs; on variants that wire all four, that's four pairs. Lite
+  2-chip hubs always get two pairs.
+- The Current / Power Factor / Reactive Power checkboxes default to
+  OFF. Tick whichever quantities you want exposed and save the
+  options form; sensors are created on reload.
+- The new per-phase V/Hz and per-circuit I/PF/VAR readings are also
+  persisted alongside power, so a planned reload (options save, HA
+  shutdown) restores last-known values rather than flipping the
+  sensors to `unavailable` until the next POST.
+
 ## [1.2.0] — 2026-04-29
 
 ### Highlights

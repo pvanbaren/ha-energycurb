@@ -49,7 +49,10 @@ DEFAULT_SHOW_REACTIVE_POWER = False
 # B; chips C and D have a floating voltage pin that reads as a few
 # hundred millivolts of noise. We use this threshold to decide whether
 # a group's `v` field represents a real measurement worth surfacing as
-# a sensor — anything below counts as "no voltage reference here".
+# a sensor — anything below counts as "no voltage reference here", so
+# its V / Hz sensors are suppressed and its `w` is approximated from a
+# neighbor phase's voltage. 10 V is well above the floating-pin noise
+# floor and well below any real mains brown-out.
 VOLTAGE_PRESENT_THRESHOLD_V = 10.0
 
 # Option-value strings must match HA's translation-key regex
