@@ -551,6 +551,34 @@ class CurbHttpServer:
                 )
             self.chip_channels[serial] = layout
 
+        # Approximate power on floating-pin chips. Standard 4-chip hubs
+        # only physically wire voltage transformers to chips A and B;
+        # chips C and D share those phases internally but have no
+        # voltage pin, so their `w` and `var` from the hub are
+        # garbage-zero (V≈0 → V·I·cos φ ≈ 0). For each affected channel,
+        # substitute w = V_phase × I / 3600 — i.e. apparent power
+        # treated as real, since we have no usable PF on these chips.
+        # Phase-source mapping mirrors the hardware: chip C piggybacks
+        # on chip A (idx 2 → 0), chip D on chip B (idx 3 → 1). The
+        # substitution is unsigned (current is RMS), so bidirectional
+        # circuits on chips C/D can only register consumption — a
+        # known limitation of the approximation, not a bug.
+        for chip_idx, n_channels in enumerate(layout):
+            if group_voltage[chip_idx] is not None:
+                continue
+            src_idx = chip_idx - 2
+            if not 0 <= src_idx < len(group_voltage):
+                continue
+            src_v = group_voltage[src_idx]
+            if src_v is None:
+                continue
+            flat_start = sum(layout[:chip_idx])
+            for offset in range(n_channels):
+                flat_idx = flat_start + offset
+                sample_w[flat_idx] = (
+                    src_v * sample_i[flat_idx] / WH_PER_SEC_TO_W
+                )
+
         circuits = self.circuits_for(serial)
 
         if update_power:
