@@ -1,4 +1,9 @@
-"""Sensor platform — power + energy (+ production for bidirectional) sensors per Curb hub circuit."""
+"""Sensor platform — power + energy (+ production for bidirectional) sensors per Curb hub circuit.
+
+When the per-hub Extra Electrical Sensors switch is on, we also expose
+per-circuit current / power factor / reactive power and per-phase
+voltage / frequency.
+"""
 from __future__ import annotations
 
 import logging
@@ -9,7 +14,13 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfEnergy, UnitOfPower
+from homeassistant.const import (
+    UnitOfElectricCurrent,
+    UnitOfElectricPotential,
+    UnitOfEnergy,
+    UnitOfFrequency,
+    UnitOfPower,
+)
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
@@ -39,6 +50,7 @@ async def async_setup_entry(
     def _add_device(serial: str) -> None:
         entities: list[SensorEntity] = []
         circuits = server.circuits_for(serial)
+        extras = server.extra_sensors_enabled(serial)
         for i in range(server.num_circuits_for(serial)):
             entities.append(CurbCircuitPowerSensor(server, serial, i))
             entities.append(CurbCircuitEnergySensor(server, serial, i))
@@ -46,6 +58,18 @@ async def async_setup_entry(
                 entities.append(
                     CurbCircuitEnergyProductionSensor(server, serial, i)
                 )
+            if extras:
+                entities.append(CurbCircuitCurrentSensor(server, serial, i))
+                entities.append(
+                    CurbCircuitPowerFactorSensor(server, serial, i)
+                )
+                entities.append(
+                    CurbCircuitReactivePowerSensor(server, serial, i)
+                )
+        if extras:
+            for chip_idx in server.voltage_chip_indices_for(serial):
+                entities.append(CurbHubVoltageSensor(server, serial, chip_idx))
+                entities.append(CurbHubFrequencySensor(server, serial, chip_idx))
         async_add_entities(entities)
 
     entry.async_on_unload(
@@ -169,3 +193,151 @@ class CurbCircuitEnergyProductionSensor(_CurbCircuitEnergyBase):
     _unique_id_suffix = "_energy_production"
     _name_suffix = " Energy Production"
     _store_attr = "energy_wh_production"
+
+
+class _CurbCircuitLiveBase(_CurbCircuitBase):
+    """Base for opt-in live per-circuit measurements (I, PF, VAR).
+
+    Subclasses set the unique_id suffix, the friendly-name suffix, the
+    server attribute name backing the sensor, and the usual SensorEntity
+    class attrs (device_class / unit / precision).
+    """
+
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    _unique_id_suffix: str = ""
+    _name_suffix: str = ""
+    _store_attr: str = ""
+
+    def __init__(
+        self,
+        server: CurbHttpServer,
+        serial: str,
+        circuit_idx: int,
+    ) -> None:
+        super().__init__(server, serial, circuit_idx)
+        self._attr_unique_id = (
+            f"curb_{serial}_circuit_{circuit_idx + 1}{self._unique_id_suffix}"
+        )
+        self._attr_name = f"{self._friendly}{self._name_suffix}"
+
+    def _store(self) -> dict[str, dict[int, float]]:
+        return getattr(self._server, self._store_attr)
+
+    @property
+    def native_value(self) -> float | None:
+        return self._store().get(self._serial, {}).get(self._idx)
+
+    @property
+    def available(self) -> bool:
+        return self._idx in self._store().get(self._serial, {})
+
+
+class CurbCircuitCurrentSensor(_CurbCircuitLiveBase):
+    _attr_device_class = SensorDeviceClass.CURRENT
+    _attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
+    _attr_suggested_display_precision = 2
+    _unique_id_suffix = "_current"
+    _name_suffix = " Current"
+    _store_attr = "latest_current"
+
+
+class CurbCircuitPowerFactorSensor(_CurbCircuitLiveBase):
+    _attr_device_class = SensorDeviceClass.POWER_FACTOR
+    # Curb reports signed PF in the −1…1 range, so leave the unit
+    # blank (the POWER_FACTOR device class also accepts "%", but that
+    # would imply we'd multiplied by 100 — we haven't).
+    _attr_native_unit_of_measurement = None
+    _attr_suggested_display_precision = 3
+    _unique_id_suffix = "_power_factor"
+    _name_suffix = " Power Factor"
+    _store_attr = "latest_power_factor"
+
+
+class CurbCircuitReactivePowerSensor(_CurbCircuitLiveBase):
+    _attr_device_class = SensorDeviceClass.REACTIVE_POWER
+    _attr_native_unit_of_measurement = "var"
+    _attr_suggested_display_precision = 1
+    _unique_id_suffix = "_reactive_power"
+    _name_suffix = " Reactive Power"
+    _store_attr = "latest_reactive_power"
+
+
+class _CurbHubPhaseBase(SensorEntity):
+    """Base for opt-in per-phase hub-level sensors (V, Hz).
+
+    These attach to the hub device (not a circuit) because the
+    underlying reading is one-per-ADE-chip — typically the two mains
+    legs on a split-phase install. `chip_idx` is the index within the
+    hub's group list (0 = chip A, 1 = chip B, …).
+    """
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    _unique_id_suffix: str = ""
+    _name_prefix: str = ""
+    _store_attr: str = ""
+
+    def __init__(
+        self,
+        server: CurbHttpServer,
+        serial: str,
+        chip_idx: int,
+    ) -> None:
+        self._server = server
+        self._serial = serial
+        self._chip_idx = chip_idx
+        # Match the channel-naming convention (banks of letters) so the
+        # phase labels line up with the A/B/C circuit groupings shown
+        # in the options form.
+        phase_label = chr(ord("A") + chip_idx)
+        self._attr_unique_id = (
+            f"curb_{serial}_phase_{chip_idx + 1}{self._unique_id_suffix}"
+        )
+        self._attr_name = f"{self._name_prefix} {phase_label}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, serial)},
+            name=f"Curb {serial}",
+            manufacturer="Curb",
+            model="Energy Monitor",
+        )
+
+    async def async_added_to_hass(self) -> None:
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                SIGNAL_UPDATE_FMT.format(serial=self._serial),
+                self.async_write_ha_state,
+            )
+        )
+
+    def _store(self) -> dict[str, dict[int, float]]:
+        return getattr(self._server, self._store_attr)
+
+    @property
+    def native_value(self) -> float | None:
+        return self._store().get(self._serial, {}).get(self._chip_idx)
+
+    @property
+    def available(self) -> bool:
+        return self._chip_idx in self._store().get(self._serial, {})
+
+
+class CurbHubVoltageSensor(_CurbHubPhaseBase):
+    _attr_device_class = SensorDeviceClass.VOLTAGE
+    _attr_native_unit_of_measurement = UnitOfElectricPotential.VOLT
+    _attr_suggested_display_precision = 1
+    _unique_id_suffix = "_voltage"
+    _name_prefix = "Voltage"
+    _store_attr = "latest_voltage"
+
+
+class CurbHubFrequencySensor(_CurbHubPhaseBase):
+    _attr_device_class = SensorDeviceClass.FREQUENCY
+    _attr_native_unit_of_measurement = UnitOfFrequency.HERTZ
+    _attr_suggested_display_precision = 2
+    _unique_id_suffix = "_frequency"
+    _name_prefix = "Frequency"
+    _store_attr = "latest_frequency"

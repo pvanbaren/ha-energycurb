@@ -262,12 +262,14 @@ class CurbOptionsFlow(OptionsFlow):
 
             new_options = copy.deepcopy(dict(self._entry.options))
             devices = new_options.setdefault(CONF_DEVICES, {})
-            devices[self._serial] = {
-                CONF_CIRCUITS: circuits,
-                CONF_SAMPLE_PERIOD_S: max(
-                    1, int(round(float(user_input[CONF_SAMPLE_PERIOD_S])))
-                ),
-            }
+            # Merge into the existing per-device dict so unrelated keys
+            # set by other surfaces (the Live Power Readings and Extra
+            # Electrical Sensors switches) survive a circuits-form save.
+            device_entry = devices.setdefault(self._serial, {})
+            device_entry[CONF_CIRCUITS] = circuits
+            device_entry[CONF_SAMPLE_PERIOD_S] = max(
+                1, int(round(float(user_input[CONF_SAMPLE_PERIOD_S])))
+            )
 
             # Tell the hub to fetch the new hub-config.json on its next
             # 5-second message poll, instead of waiting up to 5 minutes

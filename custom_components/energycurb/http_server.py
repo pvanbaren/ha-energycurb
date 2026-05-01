@@ -19,12 +19,15 @@ from .const import (
     CONF_CIRCUITS,
     CONF_CIRCUIT_BIDIRECTIONAL,
     CONF_DEVICES,
+    CONF_EXTRA_SENSORS,
     CONF_SAMPLE_PERIOD_S,
     DEFAULT_CHIP_CHANNELS,
+    DEFAULT_EXTRA_SENSORS,
     DEFAULT_SAMPLE_PERIOD_S,
     DOMAIN,
     SIGNAL_NEW_DEVICE,
     SIGNAL_UPDATE_FMT,
+    VOLTAGE_PRESENT_THRESHOLD_V,
     WH_PER_SEC_TO_W,
 )
 from .hub_config import build_hub_config, default_circuits
@@ -106,6 +109,18 @@ class CurbHttpServer:
         self.serials: set[str] = set()
         self.latest: dict[str, dict[int, float]] = {}
         self.latest_timestamp: dict[str, int] = {}
+        # Per-chip RMS voltage and line frequency, populated only for
+        # groups whose `v` is above VOLTAGE_PRESENT_THRESHOLD_V — that
+        # filters out the floating voltage pin on chips without a
+        # transformer (chips C/D on standard 4-chip hubs read ~0.3 V).
+        # Per-channel RMS current, power factor, and reactive power
+        # come straight from the channel dict; surfacing them as
+        # entities is gated by the per-hub CONF_EXTRA_SENSORS toggle.
+        self.latest_voltage: dict[str, dict[int, float]] = {}
+        self.latest_frequency: dict[str, dict[int, float]] = {}
+        self.latest_current: dict[str, dict[int, float]] = {}
+        self.latest_power_factor: dict[str, dict[int, float]] = {}
+        self.latest_reactive_power: dict[str, dict[int, float]] = {}
         # Cumulative energy per (serial, circuit_idx), in Wh. The common
         # `energy_wh` store always backs the "Energy" sensor — its
         # meaning shifts with the circuit's bidirectional flag:
@@ -147,8 +162,12 @@ class CurbHttpServer:
         #   pre-bidirectional : flat {serial: {idx: wh}} of |w| totals
         #   pre-multi-model   : {"energy","production": {serial: {idx: wh}}}
         #   pre-live-power    : adds {"chip_channels": {serial: [n,...]}}
-        #   current           : adds {"power": {serial: {idx: w}}}
+        #   pre-extra-sensors : adds {"power": {serial: {idx: w}}}
+        #   current           : adds {"voltage","frequency","current",
+        #                              "power_factor","reactive_power":
+        #                              {serial: {idx: value}}}
         # Detect by the top-level keys and map flat data into `energy`.
+        # Missing keys default to empty so a v1 store still loads.
         stored = await self._energy_store.async_load()
         if stored:
             if "energy" in stored or "production" in stored:
@@ -156,15 +175,30 @@ class CurbHttpServer:
                 production_data = stored.get("production", {})
                 chip_data = stored.get("chip_channels", {})
                 power_data = stored.get("power", {})
+                voltage_data = stored.get("voltage", {})
+                frequency_data = stored.get("frequency", {})
+                current_data = stored.get("current", {})
+                power_factor_data = stored.get("power_factor", {})
+                reactive_power_data = stored.get("reactive_power", {})
             else:
                 energy_data = stored
                 production_data = {}
                 chip_data = {}
                 power_data = {}
+                voltage_data = {}
+                frequency_data = {}
+                current_data = {}
+                power_factor_data = {}
+                reactive_power_data = {}
             for target, data in (
                 (self.energy_wh, energy_data),
                 (self.energy_wh_production, production_data),
                 (self.latest, power_data),
+                (self.latest_voltage, voltage_data),
+                (self.latest_frequency, frequency_data),
+                (self.latest_current, current_data),
+                (self.latest_power_factor, power_factor_data),
+                (self.latest_reactive_power, reactive_power_data),
             ):
                 for serial, circuits in data.items():
                     target[serial] = {
@@ -249,6 +283,25 @@ class CurbHttpServer:
             return max(1, int(round(float(val))))
         except (TypeError, ValueError):
             return DEFAULT_SAMPLE_PERIOD_S
+
+    def extra_sensors_enabled(self, serial: str) -> bool:
+        """Whether to expose V / Hz / I / PF / VAR sensors for `serial`."""
+        devices = self.entry.options.get(CONF_DEVICES, {})
+        return bool(
+            devices.get(serial, {}).get(
+                CONF_EXTRA_SENSORS, DEFAULT_EXTRA_SENSORS
+            )
+        )
+
+    def voltage_chip_indices_for(self, serial: str) -> list[int]:
+        """Chip indices on `serial` that have a real voltage reference.
+
+        Standard 4-chip hubs return [0, 1] (chips A and B); Lite 2-chip
+        hubs also return [0, 1]. Empty before the first sample on a
+        fresh install — sensor.py only uses this after SIGNAL_NEW_DEVICE
+        fires, by which point a sample has been ingested.
+        """
+        return sorted(self.latest_voltage.get(serial, {}).keys())
 
     async def _handle_samples(self, request: web.Request) -> web.Response:
         serial = request.match_info["serial"]
@@ -445,13 +498,34 @@ class CurbHttpServer:
         update_energy = p == 60
         groups = sample.get("g", []) or []
         sample_w: list[float] = []
+        sample_i: list[float] = []
+        sample_pf: list[float] = []
+        sample_var: list[float] = []
+        group_voltage: list[float | None] = []
+        group_frequency: list[float | None] = []
         layout: list[int] = []
         for group in groups:
             channels = group.get("c", []) or []
             layout.append(len(channels))
+            v = group.get("v")
+            f = group.get("f")
+            v_val = float(v) if v is not None else 0.0
+            if v_val >= VOLTAGE_PRESENT_THRESHOLD_V:
+                group_voltage.append(v_val)
+                group_frequency.append(
+                    float(f) if f is not None else None
+                )
+            else:
+                group_voltage.append(None)
+                group_frequency.append(None)
             for ch in channels:
-                w = ch.get("w") or 0
-                sample_w.append(float(w))
+                sample_w.append(float(ch.get("w") or 0))
+                sample_i.append(float(ch.get("i") or 0))
+                # Channel-level `p` is power factor (-1..1), distinct
+                # from the sample-level `p` we already consumed above
+                # as the period.
+                sample_pf.append(float(ch.get("p") or 0))
+                sample_var.append(float(ch.get("var") or 0))
         if not sample_w:
             _LOGGER.debug("%s: empty sample — skipping", serial)
             return
@@ -480,10 +554,31 @@ class CurbHttpServer:
         circuits = self.circuits_for(serial)
 
         if update_power:
-            # w is Wh/s (a rate) → multiply by 3600 to get watts.
+            # w and var are Wh/s and VARh/s (rates) → ×3600 → W and VAR.
+            # i, p (PF), and per-chip v/f are direct readings.
             power_store = self.latest.setdefault(serial, {})
+            current_store = self.latest_current.setdefault(serial, {})
+            pf_store = self.latest_power_factor.setdefault(serial, {})
+            var_store = self.latest_reactive_power.setdefault(serial, {})
             for i, w in enumerate(sample_w):
                 power_store[i] = w * WH_PER_SEC_TO_W
+                current_store[i] = sample_i[i]
+                pf_store[i] = sample_pf[i]
+                var_store[i] = sample_var[i] * WH_PER_SEC_TO_W
+            voltage_store = self.latest_voltage.setdefault(serial, {})
+            frequency_store = self.latest_frequency.setdefault(serial, {})
+            for chip_idx, v in enumerate(group_voltage):
+                if v is None:
+                    # Floating-pin chip — drop any stale entry so the
+                    # sensor (if one exists) goes unavailable rather
+                    # than reporting last-known noise.
+                    voltage_store.pop(chip_idx, None)
+                    frequency_store.pop(chip_idx, None)
+                    continue
+                voltage_store[chip_idx] = v
+                f = group_frequency[chip_idx]
+                if f is not None:
+                    frequency_store[chip_idx] = f
 
         if update_energy:
             # Energy delta over the period: w (Wh/s) × p (s) = Wh.
@@ -524,10 +619,11 @@ class CurbHttpServer:
             )
 
     def _energy_snapshot(self) -> dict[str, Any]:
-        # `power` is included so a planned reload (e.g. options change
-        # via the Live Power Readings switch or the options flow) can
-        # restore the last-known W readings post-reload, keeping the
-        # power sensors continuously available rather than flipping to
+        # `power` and the live electrical readings are included so a
+        # planned reload (e.g. options change via the Live Power
+        # Readings or Extra Electrical Sensors switch, or the options
+        # flow) can restore last-known values post-reload, keeping
+        # those sensors continuously available rather than flipping to
         # `unavailable` until the next sample arrives. The values may
         # be stale across an unplanned crash, but that's no worse than
         # the prior behavior (sensors unavailable until next POST).
@@ -536,4 +632,9 @@ class CurbHttpServer:
             "production": self.energy_wh_production,
             "chip_channels": self.chip_channels,
             "power": self.latest,
+            "voltage": self.latest_voltage,
+            "frequency": self.latest_frequency,
+            "current": self.latest_current,
+            "power_factor": self.latest_power_factor,
+            "reactive_power": self.latest_reactive_power,
         }

@@ -31,6 +31,7 @@ CONF_DEVICES = "devices"
 CONF_CIRCUITS = "circuits"
 CONF_SERIAL = "serial"
 CONF_SAMPLE_PERIOD_S = "sample_period_s"
+CONF_EXTRA_SENSORS = "extra_sensors"
 CONF_CIRCUIT_NAME = "name"
 CONF_CIRCUIT_CLAMP = "clamp"
 CONF_CIRCUIT_VOLTAGE = "voltage"
@@ -38,6 +39,14 @@ CONF_CIRCUIT_INVERTED = "inverted"
 CONF_CIRCUIT_BIDIRECTIONAL = "bidirectional"
 
 DEFAULT_SAMPLE_PERIOD_S = 60
+DEFAULT_EXTRA_SENSORS = False
+
+# A standard 4-chip hub wires voltage transformers only to chips A and
+# B; chips C and D have a floating voltage pin that reads as a few
+# hundred millivolts of noise. We use this threshold to decide whether
+# a group's `v` field represents a real measurement worth surfacing as
+# a sensor — anything below counts as "no voltage reference here".
+VOLTAGE_PRESENT_THRESHOLD_V = 10.0
 
 # Option-value strings must match HA's translation-key regex
 # `[a-z0-9-_]+` (no leading/trailing - or _) so they can key into the
