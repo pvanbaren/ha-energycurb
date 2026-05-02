@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Versions
 follow [semantic versioning](https://semver.org/), and the format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [1.3.0] — 2026-05-01
+## [1.3.1] — 2026-05-02
 
 ### Highlights
 - **New per-phase Voltage and Frequency sensors**, one each per ADE
