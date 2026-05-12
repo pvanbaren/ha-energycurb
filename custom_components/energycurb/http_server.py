@@ -90,6 +90,13 @@ def enqueue_hub_message(
 
 ENERGY_STORAGE_VERSION = 1
 ENERGY_SAVE_DELAY_SECS = 30  # batch up to 30s of samples into one disk write
+# Backward jump in sample `t` larger than this means "hub clock reset",
+# not "retransmit / backfill" — resync the dedup boundary instead of
+# silently dropping every future sample. Sized comfortably above any
+# plausible hub-side backfill window (the hub's in-RAM buffer can't hold
+# anywhere near a day's worth of aggregates) and well below any
+# real-world clock-reset jump (typically to epoch 0 or off by years).
+ENERGY_CLOCK_RESET_THRESHOLD_S = 24 * 3600
 
 
 def _energy_storage_key(entry: ConfigEntry) -> str:
@@ -536,10 +543,29 @@ class CurbHttpServer:
         # POSTs the persisted `_last_energy_t` carries the boundary.
         # Power and other "last-write-wins" stores below are unaffected;
         # only energy accumulation is skipped.
+        #
+        # Clock-reset escape hatch: if `sample_t` is more than a day
+        # behind `last_t`, that's not a retransmit — it's a hub-side
+        # clock rollback (RTC failure on boot, NTP jump, manual change).
+        # Without this guard, every future sample would be dropped until
+        # the clock climbed back past the persisted boundary, silently
+        # halting energy accumulation. Resync instead and warn so the
+        # user can investigate the hub clock.
         if update_energy and sample_t is not None:
             last_t = self._last_energy_t.get(serial)
-            if last_t is not None and sample_t <= last_t:
-                update_energy = False
+            if last_t is not None:
+                if last_t - sample_t > ENERGY_CLOCK_RESET_THRESHOLD_S:
+                    _LOGGER.warning(
+                        "%s: sample t=%s is %ds behind last accumulated "
+                        "t=%s — assuming hub clock reset, resyncing "
+                        "energy dedup boundary",
+                        serial,
+                        sample_t,
+                        last_t - sample_t,
+                        last_t,
+                    )
+                elif sample_t <= last_t:
+                    update_energy = False
         groups = sample.get("g", []) or []
         sample_w: list[float] = []
         sample_i: list[float] = []
@@ -563,13 +589,13 @@ class CurbHttpServer:
                 group_voltage.append(None)
                 group_frequency.append(None)
             for ch in channels:
-                sample_w.append(float(ch.get("w") or 0))
-                sample_i.append(float(ch.get("i") or 0))
+                sample_w.append(float(ch.get("w", 0)))
+                sample_i.append(float(ch.get("i", 0)))
                 # Channel-level `p` is power factor (-1..1), distinct
                 # from the sample-level `p` we already consumed above
                 # as the period.
-                sample_pf.append(float(ch.get("p") or 0))
-                sample_var.append(float(ch.get("var") or 0))
+                sample_pf.append(float(ch.get("p", 0)))
+                sample_var.append(float(ch.get("var", 0)))
         if not sample_w:
             _LOGGER.debug("%s: empty sample — skipping", serial)
             return
