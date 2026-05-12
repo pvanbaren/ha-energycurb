@@ -138,6 +138,13 @@ class CurbHttpServer:
         # total_increasing semantics.
         self.energy_wh: dict[str, dict[int, float]] = {}
         self.energy_wh_production: dict[str, dict[int, float]] = {}
+        # Most recent sample `t` we've folded into the energy counters
+        # per serial. Drives idempotent ingest: a POST that retries or
+        # backfills aggregates we've already summed (network blip,
+        # 400-then-retry, hub buffer drain after reconnect) gets
+        # deduped instead of double-counting. Persisted alongside the
+        # totals so the guard survives HA restarts.
+        self._last_energy_t: dict[str, int] = {}
         # Per-hub ADE chip layout, learned from the first samples POST
         # we see. Persisted alongside the energy counters so a Lite hub
         # gets the right number of sensors recreated across HA restarts.
@@ -169,9 +176,10 @@ class CurbHttpServer:
         #   pre-multi-model   : {"energy","production": {serial: {idx: wh}}}
         #   pre-live-power    : adds {"chip_channels": {serial: [n,...]}}
         #   pre-extra-sensors : adds {"power": {serial: {idx: w}}}
-        #   current           : adds {"voltage","frequency","current",
+        #   pre-dedup         : adds {"voltage","frequency","current",
         #                              "power_factor","reactive_power":
         #                              {serial: {idx: value}}}
+        #   current           : adds {"last_energy_t": {serial: t}}
         # Detect by the top-level keys and map flat data into `energy`.
         # Missing keys default to empty so a v1 store still loads.
         stored = await self._energy_store.async_load()
@@ -186,6 +194,7 @@ class CurbHttpServer:
                 current_data = stored.get("current", {})
                 power_factor_data = stored.get("power_factor", {})
                 reactive_power_data = stored.get("reactive_power", {})
+                last_t_data = stored.get("last_energy_t", {})
             else:
                 energy_data = stored
                 production_data = {}
@@ -196,6 +205,7 @@ class CurbHttpServer:
                 current_data = {}
                 power_factor_data = {}
                 reactive_power_data = {}
+                last_t_data = {}
             for target, data in (
                 (self.energy_wh, energy_data),
                 (self.energy_wh_production, production_data),
@@ -214,6 +224,11 @@ class CurbHttpServer:
             for serial, layout in chip_data.items():
                 if isinstance(layout, list) and layout:
                     self.chip_channels[serial] = [int(n) for n in layout]
+            for serial, t in last_t_data.items():
+                try:
+                    self._last_energy_t[serial] = int(t)
+                except (TypeError, ValueError):
+                    continue
 
         app = web.Application()
         app.router.add_post("/v3/samples/{serial}", self._handle_samples)
@@ -514,6 +529,17 @@ class CurbHttpServer:
         """
         update_power = p == sample_period
         update_energy = p == 60
+        sample_t = sample.get("t")
+        # Dedup retransmits / backfills of aggregates we've already
+        # summed. Strictly-monotonic `t` per serial — within one POST
+        # samples are sorted by `t` (see _handle_samples), and across
+        # POSTs the persisted `_last_energy_t` carries the boundary.
+        # Power and other "last-write-wins" stores below are unaffected;
+        # only energy accumulation is skipped.
+        if update_energy and sample_t is not None:
+            last_t = self._last_energy_t.get(serial)
+            if last_t is not None and sample_t <= last_t:
+                update_energy = False
         groups = sample.get("g", []) or []
         sample_w: list[float] = []
         sample_i: list[float] = []
@@ -645,9 +671,11 @@ class CurbHttpServer:
                     energy_store[i] = (
                         energy_store.get(i, 0.0) + abs(wh_delta)
                     )
+            if sample_t is not None:
+                self._last_energy_t[serial] = sample_t
 
-        if (t := sample.get("t")) is not None:
-            self.latest_timestamp[serial] = t
+        if sample_t is not None:
+            self.latest_timestamp[serial] = sample_t
 
         if serial not in self.serials:
             self.serials.add(serial)
@@ -676,6 +704,7 @@ class CurbHttpServer:
         return {
             "energy": self.energy_wh,
             "production": self.energy_wh_production,
+            "last_energy_t": self._last_energy_t,
             "chip_channels": self.chip_channels,
             "power": self.latest,
             "voltage": self.latest_voltage,
