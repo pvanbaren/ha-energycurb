@@ -4,6 +4,52 @@ All notable changes to this project are documented here. Versions
 follow [semantic versioning](https://semver.org/), and the format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.4.0] — 2026-05-12
+
+### Highlights
+- **Idempotent energy ingest.** Retransmitted or backfilled 1-minute
+  aggregates no longer double-count into the energy totals. A
+  per-serial last-accumulated `t` boundary is persisted alongside
+  the totals, with a clock-reset escape hatch so a hub-side clock
+  rollback doesn't silently halt accumulation.
+
+### Fixed
+- **Energy double-counting on POST retries / backfills.** The samples
+  endpoint now tracks the most recent sample `t` it has folded into
+  the energy counters per hub, and skips aggregates whose `t` is at
+  or before that boundary. Triggers in practice on network blips
+  that drive a hub-side retransmit, on POSTs we 400'd and the hub
+  re-sent, and on the buffer drain a hub does after a reconnect.
+  Power and other last-write-wins stores are unaffected — only the
+  energy accumulation path is gated.
+- **Silent energy halt after a hub clock reset.** A backward jump in
+  sample `t` larger than 24 hours is now treated as a clock rollback
+  (RTC failure on boot, NTP correction, manual change) rather than a
+  retransmit: the integration logs a warning, accepts the sample,
+  and rebases the dedup boundary. Without this guard the dedup
+  introduced above would silently drop every future sample until the
+  hub clock climbed back past the persisted boundary.
+
+### Changed
+- Channel-level reads in the samples decoder switched from
+  `ch.get("x") or 0` (falsy-fallback) to `ch.get("x", 0)`
+  (missing-key-fallback). Behaviorally identical today since 0/0.0
+  round-trip through `float()` the same way; the intent is now
+  precise.
+
+### Storage
+- Persistence file gained a `last_energy_t` top-level key
+  (`{serial: t}`). Read path is additive-tolerant; missing key
+  defaults to empty and the first sample after upgrade populates
+  it. Downgrading to 1.3.x drops the key — the prior version has
+  no dedup logic at all, so the only effect is reverting to the
+  prior "may double-count on retransmits" behavior.
+
+### Upgrade notes
+- No action required. The dedup boundary populates on the first
+  POST after upgrade; existing energy totals carry forward
+  unchanged.
+
 ## [1.3.1] — 2026-05-02
 
 ### Highlights
