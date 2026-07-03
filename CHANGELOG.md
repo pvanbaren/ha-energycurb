@@ -4,6 +4,35 @@ All notable changes to this project are documented here. Versions
 follow [semantic versioning](https://semver.org/), and the format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.4.1] — 2026-07-03
+
+### Highlights
+- **Fixes a log flood under Python 3.14.** The samples endpoint no
+  longer throws an unhandled exception on every POST whose body isn't
+  zlib-wrapped, which on affected installs filled `home-assistant.log`
+  with `aiohttp.server` tracebacks (`RequestPayloadError: Can not
+  decode content-encoding: deflate`) and dropped the sample.
+
+### Fixed
+- **Unhandled `RequestPayloadError` on the samples POST.** The hub
+  sends `Content-Encoding: deflate` but the body is raw DEFLATE or
+  plain MessagePack, not zlib-wrapped. Newer aiohttp (as shipped with
+  Python 3.14) auto-inflates the body at parse time and raises before
+  the handler runs, so the integration's own decode fallback never got
+  a chance and the request failed with a logged traceback. The server
+  now runs with `auto_decompress=False` and decodes the raw bytes
+  itself — trying MessagePack first, then an explicit inflate covering
+  both zlib and raw-deflate framings (the path the decoder already
+  had, now actually reachable). Samples that previously errored out are
+  ingested normally.
+- **Body reads are now guarded.** Any residual read failure returns a
+  single `400` with a one-line warning instead of an unhandled
+  exception, so a malformed request can no longer flood the log.
+
+### Upgrade notes
+- No action required. The fix takes effect on the next samples POST
+  after upgrade and restart. No config, storage, or entity changes.
+
 ## [1.4.0] — 2026-05-12
 
 ### Highlights
