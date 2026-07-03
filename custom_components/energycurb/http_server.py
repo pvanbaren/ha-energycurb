@@ -246,7 +246,13 @@ class CurbHttpServer:
         app.router.add_route(
             "*", "/v3/diagnostics/{serial}", self._handle_diagnostics
         )
-        self._runner = web.AppRunner(app, access_log=None)
+        # auto_decompress=False: the hub sends Content-Encoding: deflate but
+        # the body is raw DEFLATE / msgpack, not zlib-wrapped. Letting aiohttp
+        # auto-inflate at parse time raises RequestPayloadError before the
+        # handler runs. We decode the raw bytes ourselves in _handle_samples.
+        self._runner = web.AppRunner(
+            app, access_log=None, auto_decompress=False
+        )
         await self._runner.setup()
         self._site = web.TCPSite(self._runner, host=self.host, port=self.port)
         await self._site.start()
@@ -345,13 +351,19 @@ class CurbHttpServer:
 
     async def _handle_samples(self, request: web.Request) -> web.Response:
         serial = request.match_info["serial"]
-        data = await request.read()
+        try:
+            data = await request.read()
+        except web.HTTPException:
+            raise
+        except Exception as err:  # RequestPayloadError et al.
+            _LOGGER.warning("failed reading body from %s: %s", serial, err)
+            return web.Response(status=400, text="bad body")
 
-        # aiohttp auto-inflates Content-Encoding: deflate bodies in current
-        # releases, so `data` is usually already the MessagePack payload.
-        # Older aiohttp (or a proxy that passes the body through verbatim)
-        # hands us the still-compressed bytes, so fall back to an explicit
-        # inflate when the first decode fails.
+        # The server runs with auto_decompress=False, so `data` is the raw
+        # bytes exactly as the hub sent them — usually MessagePack, sometimes
+        # deflate-compressed (raw or zlib-wrapped) despite the
+        # Content-Encoding header. Try msgpack first, then fall back to an
+        # explicit inflate covering both zlib and raw-deflate framings.
         payload = _try_msgpack(data)
         if payload is None:
             for wbits in (zlib.MAX_WBITS, -zlib.MAX_WBITS):
