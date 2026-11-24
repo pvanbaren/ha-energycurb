@@ -1,0 +1,81 @@
+name: Release
+
+# Publishing a full GitHub Release (not just a tag) is what HACS uses to
+# offer versions to users. Cutting a release is therefore just:
+#   1. bump custom_components/energycurb/manifest.json "version"
+#   2. add release-notes/vX.Y.Z.md (first line "## vX.Y.Z — Title")
+#   3. push the vX.Y.Z tag
+# Tags with a pre-release suffix (v1.6.0-beta.1) publish as pre-releases.
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+*"
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    uses: ./.github/workflows/validate.yml
+    permissions:
+      contents: read
+
+  release:
+    name: Publish GitHub Release
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check tag, manifest version and release notes
+        id: meta
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          manifest_version="$(jq -r .version custom_components/energycurb/manifest.json)"
+          if [ "$manifest_version" != "$version" ]; then
+            echo "::error file=custom_components/energycurb/manifest.json::manifest version $manifest_version does not match tag $tag"
+            exit 1
+          fi
+
+          notes="release-notes/${tag}.md"
+          if [ ! -s "$notes" ]; then
+            echo "::error::missing release notes file $notes"
+            exit 1
+          fi
+          # First line "## vX.Y.Z — Title" becomes the release title; the
+          # rest (leading blank lines trimmed) becomes the release body.
+          title="$(head -n 1 "$notes" | sed -E 's/^#+[[:space:]]*//; s/^v?[0-9][^[:space:]]*[[:space:]]*(—|–|-)[[:space:]]*//')"
+          if [ -z "$title" ]; then
+            echo "::error file=$notes::first line must be a heading like '## $tag — Title'"
+            exit 1
+          fi
+          tail -n +2 "$notes" | sed '/./,$!d' > "$RUNNER_TEMP/body.md"
+
+          case "$version" in
+            *-*) prerelease=true ;;
+            *)   prerelease=false ;;
+          esac
+
+          {
+            echo "title=$title"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: ${{ steps.meta.outputs.title }}
+          PRERELEASE: ${{ steps.meta.outputs.prerelease }}
+        run: |
+          args=(--verify-tag --title "$TITLE" --notes-file "$RUNNER_TEMP/body.md")
+          if [ "$PRERELEASE" = "true" ]; then
+            args+=(--prerelease --latest=false)
+          fi
+          gh release create "$GITHUB_REF_NAME" "${args[@]}"
