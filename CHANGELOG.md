@@ -4,6 +4,18 @@ All notable changes to this project are documented here. Versions
 follow [semantic versioning](https://semver.org/), and the format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+- **Hubs can be deleted from the UI.** A Curb hub's device page now
+  offers **Delete**. Deleting removes the device and its entities and
+  purges the hub's persisted energy totals, dedup boundary, chip
+  layout, cached readings, queued hub messages and per-hub options,
+  so it no longer lingers in Configure or comes back after a restart.
+  Deletion is refused (with an explanatory error) while the hub has
+  posted samples within the last 5 minutes, since its next POST would
+  immediately re-create it.
+
 ## [1.4.1] — 2026-07-03
 
 ### Highlights

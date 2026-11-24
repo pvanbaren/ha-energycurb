@@ -7,7 +7,8 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
+from homeassistant.helpers import device_registry as dr
 
 from .const import (
     CONF_CIRCUITS,
@@ -22,6 +23,11 @@ from .const import (
 from .http_server import CurbHttpServer
 
 _LOGGER = logging.getLogger(__name__)
+
+# A hub that has POSTed samples this recently is considered online and
+# can't be removed — its next POST (every 1-60 s) would immediately
+# re-create the device. Generous enough to cover a brief network blip.
+DEVICE_REMOVE_OFFLINE_S = 5 * 60
 
 # Pre-validator option values shipped in early 0.1.x. Translation keys
 # must match [a-z0-9-_]+, so any stored options still carrying the old
@@ -78,6 +84,53 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if server is not None:
         await server.async_stop()
     return unload_ok
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant, entry: ConfigEntry, device_entry: dr.DeviceEntry
+) -> bool:
+    """Allow the user to delete a Curb hub device from the UI.
+
+    Refused while the hub is still posting. Otherwise the hub's energy
+    totals, cached readings, queued messages and per-hub options are
+    all discarded; HA then removes the device and its entities.
+    """
+    serials = [
+        ident for domain, ident in device_entry.identifiers if domain == DOMAIN
+    ]
+    if not serials:
+        return True
+    server: CurbHttpServer | None = hass.data.get(DOMAIN, {}).get(
+        entry.entry_id
+    )
+    for serial in serials:
+        if server is not None and server.is_recently_seen(
+            serial, DEVICE_REMOVE_OFFLINE_S
+        ):
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="device_still_online",
+                translation_placeholders={
+                    "serial": serial,
+                    "minutes": str(DEVICE_REMOVE_OFFLINE_S // 60),
+                },
+            )
+
+    for serial in serials:
+        if server is not None:
+            await server.async_forget_device(serial)
+        _LOGGER.info("Removed Curb hub %s", serial)
+
+    devices = entry.options.get(CONF_DEVICES, {})
+    if any(serial in devices for serial in serials):
+        options = copy.deepcopy(dict(entry.options))
+        for serial in serials:
+            options[CONF_DEVICES].pop(serial, None)
+        # Triggers the options-update reload; the server state was
+        # already purged and saved above, so the reloaded server comes
+        # up without this hub.
+        hass.config_entries.async_update_entry(entry, options=options)
+    return True
 
 
 async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:

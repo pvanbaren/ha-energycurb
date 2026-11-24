@@ -156,6 +156,12 @@ class CurbHttpServer:
         # we see. Persisted alongside the energy counters so a Lite hub
         # gets the right number of sensors recreated across HA restarts.
         self.chip_channels: dict[str, list[int]] = {}
+        # Monotonic receipt time of the last samples POST per serial.
+        # In-memory only — used to refuse device removal while a hub is
+        # still actively posting (it would just be re-created by its
+        # next POST). Deliberately not the hub's own `t`, which can't be
+        # trusted against HA's clock.
+        self.last_seen: dict[str, float] = {}
         # Stable hub-config revision for this server's lifetime. The
         # streamer firmware re-downloads /v3/hub_config whenever the
         # `revision` field is different from its locally-cached value,
@@ -275,6 +281,40 @@ class CurbHttpServer:
         if self._runner is not None:
             await self._runner.cleanup()
             self._runner = None
+
+    def is_recently_seen(self, serial: str, window_s: float) -> bool:
+        """True if `serial` POSTed samples within the last `window_s`."""
+        seen = self.last_seen.get(serial)
+        return seen is not None and time.monotonic() - seen < window_s
+
+    async def async_forget_device(self, serial: str) -> None:
+        """Drop every trace of `serial` from in-memory and persisted state.
+
+        Called when the user deletes the hub's device. Energy totals,
+        dedup boundary, chip layout, last-known readings and any queued
+        outbound messages are all discarded, so if the hub ever posts
+        again it comes back as a brand-new device starting from zero.
+        """
+        self.serials.discard(serial)
+        for store in (
+            self.latest,
+            self.latest_timestamp,
+            self.latest_voltage,
+            self.latest_frequency,
+            self.latest_current,
+            self.latest_power_factor,
+            self.latest_reactive_power,
+            self.energy_wh,
+            self.energy_wh_production,
+            self._last_energy_t,
+            self.chip_channels,
+            self.last_seen,
+        ):
+            store.pop(serial, None)
+        _pending_messages(self.hass, self.entry).pop(serial, None)
+        # Write now rather than debounced, so an HA restart right after
+        # the delete can't resurrect the hub from the old snapshot.
+        await self._energy_store.async_save(self._energy_snapshot())
 
     def chip_channels_for(self, serial: str) -> list[int]:
         """Return the per-chip channel layout for `serial`.
@@ -402,6 +442,7 @@ class CurbHttpServer:
         # impact on long-term statistics). Power tracks whichever
         # source matches the user-configured sample period; that
         # decision lives inside _apply_sample.
+        self.last_seen[serial] = time.monotonic()
         sample_period = self.sample_period_for(serial)
         skipped = 0
         for sample in samples:

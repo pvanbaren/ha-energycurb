@@ -86,5 +86,10 @@
         "60": "1 minute"
       }
     }
+  },
+  "exceptions": {
+    "device_still_online": {
+      "message": "Curb hub {serial} is still sending data, so it would be re-added immediately. Power off the hub or point it away from Home Assistant, wait {minutes} minutes, then try again."
+    }
   }
 }

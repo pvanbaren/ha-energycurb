@@ -180,6 +180,20 @@ next POST; the energy sensors come back immediately with their last
 persisted total. Long-term statistics are preserved through restarts
 and reloads.
 
+### Removing a hub
+
+A hub you've retired or replaced can be deleted from its device page
+(Settings → Devices & Services → Curb → the hub → ⋮ → **Delete**).
+Deleting it removes the device and all its entities, its persisted
+energy totals, and its per-circuit settings from Configure.
+
+A hub that has posted data in the last 5 minutes can't be deleted —
+its next POST would just re-create it. Power it off or point it away
+from Home Assistant first, wait 5 minutes, then delete. If a deleted
+hub starts posting again later, it reappears as a new device with
+energy counters starting from zero (recorded history in the recorder
+is untouched).
+
 ## Circuit configuration
 
 Each hub exposes its channels in a fixed physical order: a standard
