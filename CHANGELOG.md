@@ -4,7 +4,12 @@ All notable changes to this project are documented here. Versions
 follow [semantic versioning](https://semver.org/), and the format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [1.5.0] — 2026-11-23
+
+### Highlights
+- **Retired or replaced hubs can be deleted.** Curb hub devices now
+  have a working **Delete** action instead of lingering forever with
+  `unavailable` entities.
 
 ### Added
 - **Hubs can be deleted from the UI.** A Curb hub's device page now
@@ -15,6 +20,17 @@ loosely based on [Keep a Changelog](https://keepachangelog.com/).
   Deletion is refused (with an explanatory error) while the hub has
   posted samples within the last 5 minutes, since its next POST would
   immediately re-create it.
+
+### Changed
+- **Releases are published automatically from tags.** Pushing a
+  `vX.Y.Z` tag runs the HACS and hassfest checks, verifies the tag
+  matches `manifest.json`, and publishes the GitHub Release using the
+  notes in `release-notes/`.
+
+### Upgrade notes
+- No action required. No config, storage, or entity changes for hubs
+  you keep. A deleted hub's energy totals and settings are discarded;
+  its recorded history in the recorder is untouched.
 
 ## [1.4.1] — 2026-07-03
 
